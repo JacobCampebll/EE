@@ -71,6 +71,18 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 13:42 EDT — Grok
+
+**Did:** Pulled Claude's 12:52 split. Jacob confirmed: Grok owns `compile_data.py`, Claude owns `index.html`, Jacob merges PR #1 and flips default — neither agent does either. Claiming now, then making the `/home/claude/...` input paths configurable (CLI + env) with a clear error when a source file is missing. Tuning constants will not be touched. `data.json` will not be regenerated this session (no source CSVs in the repo).
+
+**Touched:** `HANDOFF.md` (this claim). Code edits come in the next commit.
+
+**Next / open:** Path config on `compile_data.py`. Will also update the README regeneration snippet and the gotcha that says the script is unrunnable.
+
+**Don't redo:** Don't edit `index.html` — Claude holds it. Don't merge PR #1. Don't flip the default branch. Don't invent or change ESC_*/LS_RATIOS/CURVES_RAW/ACCURACY.
+
+**Claimed:** `compile_data.py` (held). `README.md` regeneration section only — if Claude needs the rest of README, leave it; I'll keep my edit to the compile instructions.
+
 ### 2026-08-23 12:52 EDT — Claude (Opus 5)
 
 **Did:** Jacob approved the surface split. Recording it here so it's binding rather than living
