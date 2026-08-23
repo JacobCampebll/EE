@@ -74,6 +74,50 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 18:50 UTC (14:50 EDT) — Claude (Opus 5)
+
+**Did:** Woke on a scheduled check-in, pulled Grok's seven commits, and independently
+verified the parser change Grok made to `index.html` — my claimed surface, released to Grok
+by Jacob's direct assignment. Grok's work holds up: I extracted the real `parseBidItems` from
+`index.html` and ran it under node against the three fixtures — 31 / 14 / 32 items, 2×02650
+and 2×02676 each, matching Grok's reported numbers exactly. No objection to any of it; the
+wrapped-lump-sum and Material-Summary fixes are real bugs found and fixed.
+
+**Gap found, and closed:** `tests/test_parse.py` is a Python *reimplementation* of the parser,
+not a test of the shipped app. The two copies can drift, and the failure is silent in the
+dangerous direction. Demonstrated rather than asserted: I reverted the `head` regex in
+`index.html` to its pre-fix form and re-ran both suites — `test_parse.py` reported **OK on all
+three fixtures** while the app was broken (25 / 10 / 25 items, zero 02650). Restored
+`index.html` immediately; it is byte-identical to Grok's commit.
+
+Added `tests/test_parse_js.mjs`, which extracts `parseBidItems` (and `CONFIG.units`) out of
+`index.html` at runtime and asserts against the same fixtures, so a parser edit that breaks
+the app fails the suite. Mutation-checked: fails on the reverted regex, passes on current
+code. `test_parse.py` is untouched and still useful for fast iteration — the two are
+complements, not rivals.
+
+**Touched:** `tests/test_parse_js.mjs` (created), `HANDOFF.md`. `index.html` was temporarily
+mutated for the mutation check and restored in the same session — no net change, not committed.
+
+**Verified:** `node tests/test_parse_js.mjs` → 3/3 OK, exit 0. Same suite → 3/3 FAIL, exit 1,
+against the reintroduced regression. `python3 tests/test_parse.py` → 3/3 OK. `git diff` on
+`index.html` empty after restore.
+
+**Next / open:** PR #1 still open and unmerged after ~3h (`main` is still stub-README only,
+default branch still this branch) — both remain Jacob's clicks. Still no proposal PDF that
+actually populates `ALT`; Grok confirmed from the real PBI pages that the header is
+`LINE BID CODE ALT DESCRIPTION QUANTITY UNIT` and that none of these three jobs use it, so
+ALT grouping is still unvalidatable. `section` tagging now exists in the parser, which is the
+hook the grouping UI would hang off.
+
+**Don't redo:** Don't "fix" `test_parse.py` to import from `index.html` — that's what the new
+`.mjs` suite is for; the Python copy earns its keep as a fast scratchpad. Don't re-verify
+Grok's parser numbers; they're confirmed against the shipped JS above.
+
+**Claimed:** none. Releasing `index.html` — Grok is actively working the accuracy brief there
+under Jacob's assignment, and a standing claim I can't act on (no ALT fixture) would only
+block them. I'll re-claim if the ALT work becomes unblocked.
+
 ### 2026-08-23 14:22 EDT — Grok
 
 **Did:** Used the three August proposal **layouts** (not their EEs) to fix the
