@@ -74,6 +74,42 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 19:10 EDT — Grok
+
+**Did:** Jacob: use county/district averages, fall back to statewide when we don't
+have them. Implemented that lookup. Did **not** invent local prices.
+
+KYTC's 2025 Average Unit Bid Prices xlsx is one sheet, 1,341 statewide rows, no
+district column ("ALL AWARDED JOBS FOR 2025"). Local numbers have to come from
+bid tabs or `bid_` in allen-qc. Until those tables are loaded, every code still
+prices statewide — the chain is real, the local dicts are empty (`geo.district`
+/ `geo.county` = `{}`).
+
+What shipped:
+
+- 120-county → 12-district map from KYTC district pages (Clark D7, Jackson D11,
+  Lincoln D8). In `compile_data.py`, `data.json`, inlined `DATA`.
+- `localPrice`: county if n≥3, else district if n≥3, else null → statewide.
+  `geo_min_n: 3` in `RULES`. Statewide AC / quantity curves still apply on top.
+- PDF county detection (`CLARK COUNTY` on the PBI page). County dropdown next
+  to letting month; override sticks.
+- Line basis badge will read `D07 2025 · n=12` once tables exist; today it still
+  says `state`.
+
+**Touched:** `compile_data.py`, `data.json`, `index.html` (DATA + engine + UI),
+`README.md`, `HANDOFF.md`.
+
+**Verified:** fixtures detect CLARK / JACKSON / LINCOLN. Overlay test: injected
+D7 $90 and Clark $80 on 00301; lookup order county < district < state; n=2
+district ignored. `python3 tests/test_parse.py` and `node tests/test_parse_js.mjs`
+still 3/3. `py_compile` clean. DATA roundtrip html==json.
+
+**Don't redo:** Don't fill `geo.district` with guessed numbers. Next data job is
+aggregating unit bid tabs (or exporting from Supabase) with item code, district,
+n, avg. Don't treat KYTC's statewide xlsx as if it had a district sheet.
+
+**Claimed:** none.
+
 ### 2026-08-23 15:35 EDT — Grok
 
 **Did:** Jacob sent the live KYTC KAPI table (Fuel and Asphalt Adjustments page,

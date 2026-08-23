@@ -79,8 +79,12 @@ everything else works offline.
 
 For each bid item:
 
-1. **Look up the statewide average unit price** for that item code, newest year available
-   (KYTC publishes one file per year, 2022–2025).
+1. **Look up a unit price** for that item code, newest year available. Order:
+   **county → district → statewide**. County/district averages are used only when we
+   have at least 3 observations; otherwise it falls through. KYTC's published Average
+   Unit Bid Prices workbook is statewide-only, so today every code still falls through
+   to statewide until district tables are loaded from bid tabs / Supabase. The proposal's
+   county is detected from the PDF (override in the dropdown).
 2. **Escalate** from the file year to the letting year using measured year-over-year drift.
    Asphalt items are handled separately: the binder cost is stripped out at the file year's
    KAPI index, the remaining residual is escalated, then binder is added back at the letting
