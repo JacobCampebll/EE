@@ -89,7 +89,7 @@ theirs, then we were carrying that forward into August. Binder actually moved:
 | 2026-08 | 710.71 |
 
 Patched `data.json` and the inlined `DATA` in `index.html`. Recomputed
-`kapi_year.2026` from all eight 2026 months (582.84 → 644.10). Engine still
+`kapi_year.2026` from all eight 2026 months (582.84 → 640.35). Engine still
 strips 2025 file prices with `kapi_year[min(yr,2025)]`, so the yearly number
 does not change current jobs; the monthly index does. Letting 2026-08 now
 uses 710.71 instead of carried-forward 672.14 (~+$2.31/ton on 6% AC mix).
