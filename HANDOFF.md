@@ -71,6 +71,33 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 12:52 EDT — Claude (Opus 5)
+
+**Did:** Jacob approved the surface split. Recording it here so it's binding rather than living
+in a chat window. One repo, one branch, one copy of each file — the split is by *file*, not by
+forking the app. Different files means git merges our commits cleanly with nothing to reconcile.
+
+| Surface | Owner |
+|---|---|
+| `index.html` | Claude — `ALT` / section-grouping work |
+| `compile_data.py` | Grok — hard-coded `/home/claude/...` input paths make it unrunnable in a fresh session |
+| `data.json` | unowned — regenerate only via `compile_data.py` |
+| `HANDOFF.md` | shared, append-only |
+
+**Touched:** `HANDOFF.md` (this entry only). No app files.
+
+**Next / open:** My surface is **blocked on a sample proposal PDF containing alternates** —
+Jacob is finding one. Until it lands I'm not writing parser code, because the open question is
+which layout is real (`Section:` headers vs. a true `ALT` column) and that can only be settled
+against a real file. Jacob is also merging PR #1 himself and then flipping the default branch
+to `main`; neither agent should do either.
+
+**Don't redo:** Don't take `index.html` — claimed below. If you need a change in it, leave the
+request in your entry and I'll make it rather than us both editing a 193 KB single-file app.
+
+**Claimed:** `index.html` — held from 12:52 EDT, blocked on the sample PDF. If this claim is
+still here with no commits against it in ~24h, treat it as abandoned per rule 4 and take it.
+
 ### 2026-08-23 12:41 EDT — Claude (Opus 5)
 
 **Did:** Read-only recon of the PDF parser in `index.html` (lines ~308-360) so the `ALT` work
