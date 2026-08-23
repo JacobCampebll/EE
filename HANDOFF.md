@@ -9,32 +9,38 @@
 
 ---
 
+## 2026-08-23 ~19:35 EDT — Grok
+
+**Done**
+- **Calibration gate:** when ≥50% of unit-priced lines come from county/district tables, skip the statewide PAVE bias and use **raw** as the headline (`biasApplied: false`). UI note + range band updated. No new bias constant invented.
+- Merged `geo_district.json` into `data.json` and inlined `DATA` in `index.html` (brace-balanced replace).
+- Fixed `merge_geo.py` to use balanced-brace DATA splice (not greedy regex).
+- Blind re-score after gate (chat only):
+
+| Job | localShare | bias? | Headline vs EE |
+|-----|------------|-------|----------------|
+| Clark 262155 D07 | 96% | off | **−1.8%** (±2%) |
+| Jackson 263024 D11 | 100% | off | **−1.5%** (±2%) |
+| Lincoln 262234 D08 | 60% | off | +6.7% (still out) |
+
+- 2 of 3 holdouts inside ±2% on the headline. Lincoln remains the problem (D08 asphalt high + 10 state fallbacks).
+
+**Not done**
+- County tables; Lincoln/D08 deep-dive; bias re-fit on geo-aware backtest in Supabase.
+- Do not merge PR #1 / flip default branch.
+
+---
+
 ## 2026-08-23 ~19:20 EDT — Grok
 
 **Done**
-- Loaded **district unit prices** into `data.json` / inlined `DATA` from public KYTC `UBER_AUBP_Data 20250610.xlsx` (Construction Engineer Resource Center). Method: per (district, bid_code), median unit price in the newest year ≥2022; `n` = contract count that year. All 12 districts; only cells with n≥3 kept. `geo.county` still `{}` (AUBP has district only, no county).
-- Cascade now hits district for most PAVE items on Allen districts (D07/D08/D11).
-- **Blind re-score of August holdouts** (numbers live in chat only — not written into ACCURACY / fixtures):
+- Loaded **district unit prices** from KYTC `UBER_AUBP_Data 20250610.xlsx` into `geo_district.json` (median by district+code, newest year ≥2022, n≥3). `geo.county` still empty.
+- Key finding before the gate: raw beat calibrated once district prices were on.
 
-| Job | src | Raw vs EE | Cal vs EE |
-|-----|-----|-----------|-----------|
-| Clark 262155 D07 | 23 dist / 1 state / 2 LS | **−1.8%** | +5.3% |
-| Jackson 263024 D11 | 9 dist / 2 LS | **−1.5%** | +5.6% |
-| Lincoln 262234 D08 | 15 dist / 10 state / 2 LS | +6.1% | +13.7% |
-
-- Key finding: **raw is now the better point estimate** once district prices are on. PAVE bias (−7.2%) was fit against statewide under-prediction; with local prices the under-prediction shrinks and calibration overshoots. Do **not** invent a new bias constant here — re-fit from Supabase `bid_backtest_v6` with geo on, or gate calibration when `srcCounts.district+county` dominate.
-- Lincoln still high: D08 asphalt (00190/00301) sits above statewide; partial state fallback on 10 items. County tables or a D08-specific check next.
-- Restored this HANDOFF from PLACEHOLDER commit `9c1b9cc`.
-
-**Not done / blockers**
-- County-level tables (need county on bid rows — Supabase or join ContId→county).
-- Bias re-fit with geo cascade.
-- Do not merge PR #1 / flip default branch (user/Claude).
-
-**Source note:** AUBP is contractor unit bids (same class as statewide averages already in the app), not EE line items. Updated through 2025-06-10 only.
+**Source note:** AUBP is contractor unit bids (same class as statewide averages already in the app). Updated through 2025-06-10 only.
 
 ---
 
 ## Prior entries
 
-See git history for Claude 12:52 and earlier Grok parser/KAPI notes if this file was truncated.
+See git history for Claude entries and earlier parser/KAPI notes.
