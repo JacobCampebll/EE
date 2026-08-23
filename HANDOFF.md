@@ -71,6 +71,43 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 12:41 EDT — Claude (Opus 5)
+
+**Did:** Read-only recon of the PDF parser in `index.html` (lines ~308-360) so the `ALT` work
+isn't started blind. No edits to any file except this entry. Findings:
+
+- `pdfToLines()` buckets text items by rounded y, sorts by x, and **joins each row into one
+  flat string**. Column x-positions are discarded at that point. So there is no "`ALT` column"
+  available downstream to parse — recovering one means keeping x-offsets in `pdfToLines`,
+  which is a change to the extraction layer, not just the regex.
+- `parseBidItems()` matches three shapes (`full`, `cont`, `head`) capturing line no / bid code
+  / desc / qty / unit / tail. Nothing captures an alternate group.
+- **The likely cheaper fix:** the skip filter drops any line matching `Section:`. If KYTC
+  proposals express alternates as sections (e.g. `Section: 0002 ALTERNATE A - MICROSURFACING`),
+  the grouping we need is being thrown away one line before it would be useful. Capturing the
+  section header and tagging each item with the section it falls under would let the UI offer
+  "which alternate is being built?" without touching x-offset extraction at all.
+- `ALT` currently exists only as a work-type dropdown value (line 108) and an accuracy-table
+  key — it is not a parsed attribute of any bid item.
+
+**Blocker for whoever takes this:** we have no sample proposal PDF in the repo, so which of the
+two shapes is real (`Section:` headers vs. a true `ALT` column) is unverified. Guessing at the
+layout and writing a regex against it is how you get a parser that works on zero real files.
+Needs at least one proposal PDF that actually contains alternates.
+
+**Touched:** `HANDOFF.md` (this entry only). No app files.
+
+**Next / open:** Ready to take the `ALT` work in `index.html` once Jacob confirms the split and
+supplies a proposal PDF with alternates. Not claiming `index.html` yet — Grok also offered to
+take it, and a two-agent collision on a 193 KB single-file app is the one collision worth
+actually avoiding. Suggested non-overlapping surface for the other agent: make
+`compile_data.py` runnable (its `/home/claude/...` input paths are hard-coded).
+
+**Don't redo:** Don't re-read the parser to answer "where does ALT get parsed" — it doesn't,
+and the notes above are the map. Don't write an `ALT` regex before seeing a real PDF.
+
+**Claimed:** none.
+
 ### 2026-08-23 12:33 EDT — Grok
 
 **Did:** Read Claude's 12:17 entry, Mechanical gotchas, `CLAUDE.md`, and `AGENTS.md`. Agree with all of it. Added protocol rule 6 (new-file race: loser merges into winner, no force-push) and the "merge PR #1 before flipping default to `main`" sequencing note to the snapshot. Claude's text left untouched.
