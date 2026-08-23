@@ -2,9 +2,8 @@
 """Merge geo_district.json into data.json and re-inline DATA in index.html."""
 import json, re, os, datetime
 HERE = os.path.dirname(os.path.abspath(__file__))
-data = json.load(open(os.path.join(HERE, "data.json"))
-geo = json.load(open(os.path.join(HERE, "geo_district.json"))
-# preserve any existing district keys, overlay file
+data = json.load(open(os.path.join(HERE, "data.json")))
+geo = json.load(open(os.path.join(HERE, "geo_district.json")))
 cur = data.setdefault("geo", {}).setdefault("district", {})
 cur.update(geo)
 data["geo"]["district"] = cur
