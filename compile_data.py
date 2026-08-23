@@ -6,12 +6,34 @@ applies the year-fallback rule, and writes a single versioned data.json
 for the single-file HTML app.
 
 Re-run this after Cowork loads new lettings, then redeploy the app.
+
+Source CSVs are not in the repo. Pass them with flags or env vars:
+
+  python3 compile_data.py --prices state_avg_all.csv --binder binder_prices.csv
+  EE_PRICES=... EE_BINDER=... python3 compile_data.py
+
+Legacy /home/claude/... paths are still checked as a last-resort default so
+existing sessions keep working. Missing files exit 1 with a path list.
 """
-import csv, json, datetime, os
+import argparse
+import csv
+import datetime
+import json
+import os
+import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SRC_PRICES = "/home/claude/state_avg_all.csv"      # year,bid_code,description,unit,statewide_quantity,avg_price,contract_occurrences
-SRC_BINDER = "/home/claude/bidpred/binder_prices.csv"
+
+# Last-resort defaults (Claude's original session layout). Prefer --prices /
+# --binder or EE_PRICES / EE_BINDER so a fresh clone can actually run.
+LEGACY_PRICES = "/home/claude/state_avg_all.csv"      # year,bid_code,description,unit,statewide_quantity,avg_price,contract_occurrences
+LEGACY_BINDER = "/home/claude/bidpred/binder_prices.csv"
+
+PRICE_COLS = (
+    "year", "bid_code", "description", "unit",
+    "statewide_quantity", "avg_price", "contract_occurrences",
+)
+BINDER_COLS = ("grade", "month", "price_per_ton")
 
 # ---- engine constants (mirror bid_app_config in Supabase) --------------------
 ESC_OTHER = {2023: 1.143, 2024: 0.942, 2025: 1.007, 2026: 1.073}   # non-asphalt YoY chain
@@ -47,7 +69,142 @@ def ac_for(desc):
             return v
     return None
 
-def main():
+def die(msg, code=1):
+    sys.stderr.write(msg.rstrip() + "\n")
+    sys.exit(code)
+
+def _candidates(filename, extra):
+    cwd = os.getcwd()
+    out = [
+        os.path.join(cwd, filename),
+        os.path.join(HERE, filename),
+        os.path.join(HERE, "data", filename),
+    ]
+    out.extend(extra)
+    # de-dupe, keep order
+    seen, uniq = set(), []
+    for p in out:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+def resolve_source(cli_value, env_name, candidates, label, flag, cols, hint):
+    """Return an existing path, or exit 1 with a usable error."""
+    tried = []
+
+    def check(path, via):
+        if not path:
+            return None
+        tried.append(f"{path}  ({via})")
+        if os.path.isfile(path):
+            return os.path.abspath(path)
+        return None
+
+    def fail():
+        looked = "\n".join(f"  {t}" for t in tried) or (
+            f"  (nothing — pass --{flag} or set {env_name})"
+        )
+        die(
+            f"error: {label} not found.\n\n"
+            f"Pass it with --{flag} PATH, or set the {env_name} environment variable.\n\n"
+            f"Looked in:\n{looked}\n\n"
+            f"Expected columns: {','.join(cols)}\n"
+            f"{hint}"
+        )
+
+    # Explicit flag or env var: that path must exist. Do not silently
+    # fall through to search — the user named a file on purpose.
+    if cli_value:
+        found = check(cli_value, f"--{flag}")
+        if not found:
+            fail()
+        return found
+    env_val = os.environ.get(env_name, "")
+    if env_val:
+        found = check(env_val, f"env {env_name}")
+        if not found:
+            fail()
+        return found
+    for c in candidates:
+        found = check(c, "search")
+        if found:
+            return found
+    fail()
+
+def require_columns(path, required, label):
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        have = reader.fieldnames or []
+    missing = [c for c in required if c not in have]
+    if missing:
+        die(
+            f"error: {label} is missing columns: {', '.join(missing)}\n"
+            f"  file: {path}\n"
+            f"  have: {', '.join(have)}\n"
+            f"  need: {', '.join(required)}"
+        )
+
+def parse_args(argv=None):
+    p = argparse.ArgumentParser(
+        description="Compile KYTC statewide averages + KAPI index into data.json.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "examples:\n"
+            "  python3 compile_data.py --prices state_avg_all.csv --binder binder_prices.csv\n"
+            "  EE_PRICES=state_avg_all.csv EE_BINDER=binder_prices.csv python3 compile_data.py\n"
+            "\n"
+            "Do not invent the tuning constants at the top of this file — they come from\n"
+            "Supabase project allen-qc, view bid_backtest_v6. Regenerating with the same\n"
+            "source CSVs must not change a number in data.json except meta.built.\n"
+        ),
+    )
+    p.add_argument(
+        "--prices",
+        default=None,
+        help="Statewide average unit-price CSV. Env: EE_PRICES. "
+             "Columns: year,bid_code,description,unit,statewide_quantity,avg_price,contract_occurrences",
+    )
+    p.add_argument(
+        "--binder",
+        default=None,
+        help="KAPI/OPIS binder index CSV. Env: EE_BINDER. Columns: grade,month,price_per_ton",
+    )
+    p.add_argument(
+        "--out",
+        default=None,
+        help="Output JSON path. Env: EE_OUT. Default: data.json next to this script.",
+    )
+    return p.parse_args(argv)
+
+def main(argv=None):
+    args = parse_args(argv)
+
+    prices_path = resolve_source(
+        args.prices, "EE_PRICES",
+        _candidates("state_avg_all.csv", [LEGACY_PRICES]),
+        "statewide average unit-price CSV", "prices", PRICE_COLS,
+        "KYTC publishes yearly .xlsx files at:\n"
+        "https://transportation.ky.gov/Construction-Procurement/Pages/Average-Unit-Bid-Prices.aspx\n"
+        "Convert/combine them to the CSV above before compiling.",
+    )
+    binder_path = resolve_source(
+        args.binder, "EE_BINDER",
+        _candidates("binder_prices.csv", [
+            os.path.join(HERE, "bidpred", "binder_prices.csv"),
+            LEGACY_BINDER,
+        ]),
+        "KAPI/OPIS binder index CSV", "binder", BINDER_COLS,
+        "KYTC \"Fuel and Asphalt Spreadsheet LET DT SEPT 2020 FORWARD\":\n"
+        "https://transportation.ky.gov/Construction/Pages/Fuel-and-Asphalt-Adjustments.aspx",
+    )
+    out = args.out or os.environ.get("EE_OUT") or os.path.join(HERE, "data.json")
+
+    require_columns(prices_path, PRICE_COLS, "prices CSV")
+    require_columns(binder_path, BINDER_COLS, "binder CSV")
+    print(f"prices: {prices_path}")
+    print(f"binder: {binder_path}")
+
     curves = {}
     for part in CURVES_RAW.split(","):
         c, b, q = part.split(":")
@@ -55,17 +212,18 @@ def main():
 
     # --- prices: newest year wins, keep the year so the app can escalate ------
     best = {}
-    for r in csv.DictReader(open(SRC_PRICES)):
-        code, yr = r["bid_code"], int(r["year"])
-        try:
-            price = float(r["avg_price"]); occ = int(float(r["contract_occurrences"]))
-        except (ValueError, TypeError):
-            continue
-        if price <= 0:
-            continue
-        if code not in best or yr > best[code]["yr"]:
-            best[code] = {"p": round(price, 2), "n": occ, "yr": yr,
-                          "d": (r["description"] or "")[:44], "u": r["unit"] or ""}
+    with open(prices_path, newline="", encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            code, yr = r["bid_code"], int(r["year"])
+            try:
+                price = float(r["avg_price"]); occ = int(float(r["contract_occurrences"]))
+            except (ValueError, TypeError):
+                continue
+            if price <= 0:
+                continue
+            if code not in best or yr > best[code]["yr"]:
+                best[code] = {"p": round(price, 2), "n": occ, "yr": yr,
+                              "d": (r["description"] or "")[:44], "u": r["unit"] or ""}
 
     prices = {}
     for code, v in best.items():
@@ -78,12 +236,13 @@ def main():
 
     # --- KAPI monthly index + yearly means -----------------------------------
     kapi, byyear = {}, {}
-    for r in csv.DictReader(open(SRC_BINDER)):
-        if r["grade"] != "64-22":
-            continue
-        m, p = r["month"][:7], float(r["price_per_ton"])
-        kapi[m] = p
-        byyear.setdefault(int(m[:4]), []).append(p)
+    with open(binder_path, newline="", encoding="utf-8-sig") as f:
+        for r in csv.DictReader(f):
+            if r["grade"] != "64-22":
+                continue
+            m, p = r["month"][:7], float(r["price_per_ton"])
+            kapi[m] = p
+            byyear.setdefault(int(m[:4]), []).append(p)
     kapi_year = {str(y): round(sum(v) / len(v), 2) for y, v in byyear.items()}
 
     data = {
@@ -103,8 +262,9 @@ def main():
         "prices": prices,
     }
 
-    out = os.path.join(HERE, "data.json")
-    json.dump(data, open(out, "w"), separators=(",", ":"))
+    os.makedirs(os.path.dirname(os.path.abspath(out)) or ".", exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(data, f, separators=(",", ":"))
     print(f"codes: {len(prices)}  curves: {len(curves)}  kapi months: {len(kapi)}")
     print(f"wrote {out}  ({os.path.getsize(out):,} bytes)")
 

@@ -57,8 +57,11 @@ Entry format:
 
 - **`data.json` is a single 170 KB line** (2,136 item codes). Diffs on it are unreadable and
   it is not hand-editable. Change it only by editing `compile_data.py` and re-running.
-- **`compile_data.py` will not run as-is.** It reads absolute paths under `/home/claude/`
-  (`state_avg_all.csv`, `bidpred/binder_prices.csv`) that do not exist in a fresh session.
+- **`compile_data.py` source CSVs are not in the repo.** Pass `--prices` / `--binder`
+  (or `EE_PRICES` / `EE_BINDER`). Missing files exit 1 with the paths tried and expected
+  columns. The old `/home/claude/...` paths are still a last-resort search so existing
+  Claude sessions keep working. `--out` / `EE_OUT` optional. Tuning constants at the top
+  of the file are still not derived here — do not invent them.
 - **The tuning constants are not derived in this repo.** Escalation chains, LS ratios,
   quantity curves and the accuracy table at the top of `compile_data.py` come from Supabase
   (project `allen-qc`, tables prefixed `bid_`, view `bid_backtest_v6`). Update them there
@@ -70,6 +73,37 @@ Entry format:
 ---
 
 ## Log
+
+### 2026-08-23 13:50 EDT — Grok
+
+**Did:** Made `compile_data.py` runnable in a fresh session. Input paths are `--prices` /
+`--binder` (env `EE_PRICES` / `EE_BINDER`); `--out` / `EE_OUT` optional. An explicit flag
+or env var that points at a missing file fails on that path — no silent fallback. With no
+flags it searches cwd, the script dir, `data/`, then the legacy `/home/claude/...` paths.
+Missing file or wrong columns → exit 1 with a path list and expected headers. Tuning
+constants (`ESC_*`, `RULES`, `AC`, `LS_RATIOS`, `CURVES_RAW`, `ACCURACY`, `N_PROJECTS`)
+are byte-identical to the previous file and to committed `data.json`. Did **not**
+regenerate `data.json` (no source CSVs in the repo). Did **not** touch `index.html`.
+Did **not** merge PR #1 or flip the default branch.
+
+**Touched:** `compile_data.py`, `README.md` (regeneration snippet only), `HANDOFF.md`
+(this entry + gotcha update)
+
+**Verified:** `py_compile` clean. No-args and missing-path runs exit 1 with a usable
+message. Fixture CSVs via CLI, env, and cwd-search all write JSON; newest-year-wins,
+zero/bad prices skipped, AC + quantity curves attach, KAPI filters to 64-22. Wrong-column
+CSV names the missing headers. Constant dicts match the orig script and committed
+`data.json` (2,136 codes).
+
+**Next / open:** Need the real `state_avg_all.csv` + `binder_prices.csv` to golden-check
+a regenerate of `data.json` (should be identical except `meta.built`). Claude still holds
+`index.html`. Request for Claude: none this session.
+
+**Don't redo:** Don't edit `index.html`. Don't merge PR #1 / flip default. Don't
+re-hardcode `/home/claude/` as the only path. Don't invent tuning constants.
+
+**Claimed:** none — released. Surface ownership of `compile_data.py` still Grok per the
+12:52 split.
 
 ### 2026-08-23 13:42 EDT — Grok
 

@@ -91,10 +91,21 @@ bias. The point estimate is the raw basis — **read the range, not the number**
 Re-run when KYTC publishes a new year of average unit prices, a new Fuel & Asphalt
 spreadsheet, or when enough new lettings are loaded to re-derive the ratios.
 
+The source CSVs are **not in the repo**. Pass them in:
+
 ```bash
-python3 compile_data.py     # writes data.json
-# then rebuild index.html with the new data inline
+python3 compile_data.py --prices path/to/state_avg_all.csv --binder path/to/binder_prices.csv
+# equivalent: EE_PRICES=... EE_BINDER=... python3 compile_data.py
+# optional: --out path/to/data.json   (default: data.json next to the script)
 ```
+
+If a source file is missing, the script exits 1 and prints the paths it tried plus the
+expected columns. With no flags it also looks in the current directory, next to the script,
+and (last resort) the original `/home/claude/...` session paths.
+
+Then rebuild `index.html` with the new data inline — regenerating `data.json` alone does
+not change app behavior. Claude owns `index.html`; leave an `HANDOFF.md` request rather
+than editing it from this side.
 
 Sources:
 
@@ -105,7 +116,9 @@ Sources:
 
 Constants at the top of `compile_data.py` (escalation chains, LS ratios, quantity curves,
 accuracy figures) are derived in Supabase — project `allen-qc`, tables prefixed `bid_`,
-view `bid_backtest_v6`. Update them there first, then paste in.
+view `bid_backtest_v6`. Update them there first, then paste in. Do not invent them locally.
+Regenerating with the same source CSVs must not change a number in `data.json` except
+`meta.built`.
 
 ---
 
