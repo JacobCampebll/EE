@@ -365,8 +365,14 @@ function parseBidItems(lines){
   const U = CONFIG.units.join("|");
   const full = new RegExp("^(\\d{4})\\s+([0-9A-Z]{5,12})\\s+(.*?)\\s+([\\d,]+\\.?\\d*)\\s+("+U+")\\b(.*)$");
   const cont = new RegExp("^(.*?)\\s+([\\d,]+\\.?\\d*)\\s+("+U+")\\b(.*)$");
-  const head = /^(\d{4})\s+([0-9A-Z]{5,12})\s+(.+)$/;
-  const out = []; let pending = null;
+  // desc is optional so wrapped LS rows ("0080 02650" / desc / "1.00 LS") still attach
+  const head = /^(\d{4})\s+([0-9A-Z]{5,12})\s*(.*)$/;
+  const out = []; let pending = null; let section = null;
+  // Full proposals also contain a Material Summary with *different* line numbers
+  // and per-road quantities. Pricing both double-counts asphalt. If a PBI table
+  // is present, parse only that.
+  const hasPBI = lines.some(l => /PROPOSAL BID ITEMS/i.test(l));
+  let inPBI = !hasPBI;
 
   function push(line, code, desc, qty, unit, tail){
     const q = parseFloat(String(qty).replace(/,/g,""));
@@ -375,12 +381,18 @@ function parseBidItems(lines){
     if (!desc) return;
     if (/^\d+$/.test(code)) code = code.padStart(5,"0");
     const fp = /\$\s?([\d,]+\.\d{2})/.exec(tail || "");
-    out.push({ line, code, desc, qty:q, unit,
+    out.push({ line, code, desc, qty:q, unit, section,
                fixedAmt: fp ? parseFloat(fp[1].replace(/,/g,"")) : null });
   }
   for (const raw of lines){
     const ln = raw.replace(/\u00a0/g," ").trim();
-    if (!ln || /PROPOSAL BID ITEMS|Report Date|Page \d|LINE BID CODE|Section:|Contract ID|ADDENDUM/i.test(ln)) continue;
+    if (!ln) continue;
+    if (/PROPOSAL BID ITEMS/i.test(ln)){ inPBI = true; pending = null; continue; }
+    if (/MATERIAL SUMMARY/i.test(ln)){ inPBI = false; pending = null; continue; }
+    if (!inPBI) continue;
+    if (/^(Report Date|Page \d|LINE BID CODE|Contract ID|ADDENDUM)/i.test(ln)) continue;
+    const sec = ln.match(/^Section:\s*(\S+)\s*-?\s*(.*)$/i);
+    if (sec){ section = (sec[1] + " " + (sec[2] || "")).trim(); pending = null; continue; }
     let m = ln.match(full);
     if (m){ pending = null; push(m[1],m[2],m[3],m[4],m[5],m[6]); continue; }
     if (pending){
@@ -389,7 +401,7 @@ function parseBidItems(lines){
       pending.desc += " " + ln; continue;
     }
     m = ln.match(head);
-    if (m && !/^\d{4}\s+\d{4}\b/.test(ln)) pending = { line:m[1], code:m[2], desc:m[3] };
+    if (m && !/^\d{4}\s+\d{4}\b/.test(ln)) pending = { line:m[1], code:m[2], desc:m[3] || "" };
   }
   return out;
 }
@@ -419,11 +431,16 @@ async function handleFiles(files){
     const priced = parsed.filter(i => DATA.prices[i.code] || DATA.ls_ratios[i.code]).length;
     const guess = suggestCat(parsed);
     document.getElementById("wtSelect").value = guess.cat;
+    const altSecs = [...new Set(parsed.map(i => i.section).filter(s => s && /ALTERNATE/i.test(s)))];
+    const altNote = altSecs.length
+      ? ` <b style="color:var(--warn)">Looks like alternates (${altSecs.join("; ")}). Both sides are priced until you pick one — this will over-predict.</b>`
+      : "";
     st.innerHTML = `Read <b>${parsed.length}</b> bid items from ${files.length} file${files.length>1?"s":""}.`;
     document.getElementById("parseSummary").innerHTML =
       `<b>${parsed.length}</b> items · <b>${priced}</b> priced · <b>${parsed.length-priced}</b> with no data.
        Work type set to <b>${document.getElementById("wtSelect").selectedOptions[0].text}</b>
-       (${guess.why}). Change the dropdown if that's wrong — lump-sum % and calibration both follow it.`;
+       (${guess.why}). Change the dropdown if that's wrong — lump-sum % and calibration both follow it.`
+       + altNote;
     document.getElementById("itemsTable").innerHTML = `<table><thead><tr><th>Line</th><th>Code</th>
       <th class="hidesm">Description</th><th class="num">Qty</th><th>Unit</th><th>Basis</th></tr></thead><tbody>
       ${parsed.map(i => { const e = DATA.prices[i.code], l = DATA.ls_ratios[i.code];

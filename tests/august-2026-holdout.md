@@ -23,3 +23,17 @@ Rules for both agents:
 3. Do **not** commit EE / bid / award dollars for these jobs.
 4. Git history of this file from 2026-08-23 14:00 EDT still has a scored table.
    Do not resurrect it into the app.
+
+## Parser layout (no labels)
+
+These PDFs taught the parser, not the prices:
+
+- Official table header is `LINE BID CODE ALT DESCRIPTION QUANTITY UNIT …`
+- `Section:` is real (`0001 - PAVING` / `ROADWAY`, `0002 - DEMOBILIZATION`)
+- Lump-sum rows wrap (`02650` / `02676` split across 2–3 lines)
+- Full proposals also contain a **Material Summary** with different line numbers
+  and per-road quantities. Parsing both double-counts asphalt. The app now
+  reads only `PROPOSAL BID ITEMS` when that heading is present.
+
+Layout fixtures (quantities only): `tests/fixtures/*.pbi.txt`. Run
+`python3 tests/test_parse.py`.

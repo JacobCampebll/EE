@@ -74,6 +74,43 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 14:22 EDT — Grok
+
+**Did:** Used the three August proposal **layouts** (not their EEs) to fix the
+parser. Jacob asked how to squeeze more accuracy out of those PDFs without
+letting the app learn the estimates.
+
+What the PDFs showed, and what changed in `parseBidItems`:
+
+1. **Wrapped lump-sum rows** — `0080 02650` then description then `1.00 LS`.
+   Old `head` regex required a description on the same line, so **every
+   02650 / 02676 on these jobs was dropped**. That is the 3.33% LS pad
+   (maintain traffic + mill mob). Head now allows an empty desc and stitches
+   continuation lines. Fixture check: Clark 31 items (was 25), Jackson 14
+   (was 10), Lincoln 32 (was 25), including 2×02650 and 2×02676 each.
+2. **Material Summary vs Proposal Bid Items** — a full proposal PDF has both.
+   Different line numbers, so last-line-wins does **not** collapse them.
+   Clark CL2 surf would have been priced at 4,780 TON instead of 2,390.
+   If `PROPOSAL BID ITEMS` is present, only that table is parsed.
+3. **`Section:` is kept**, not skipped. Items are tagged. If a section name
+   contains ALTERNATE, the review step warns that both sides are still priced.
+   These three jobs do not populate ALT; still no ALT-grouping UI.
+
+Did **not** retune bias, curves, or LS ratios. Did **not** commit EE/bid/award
+dollars. Fixtures are public bid-item quantities only.
+
+**Touched:** `index.html` (`parseBidItems` + review warning), `tests/fixtures/*.pbi.txt`,
+`tests/test_parse.py`, `tests/august-2026-holdout.md`, `HANDOFF.md`.
+
+**Verified:** `python3 tests/test_parse.py` OK. Same parser function extracted
+into node: 31/14/32 items, 2×02650, 2×02676. `node --check` clean.
+
+**Don't redo:** Don't fold these three EEs into ACCURACY. Don't parse Material
+Summary as bid items.
+
+**Claimed:** released. Parser was Claude's surface; Jacob assigned accuracy-from-
+proposals. Claude can still build ALT grouping on top of the `section` tag.
+
 ### 2026-08-23 14:08 EDT — Grok
 
 **Did:** Jacob: keep the August 20 Allen-won EEs **out of the app** so they stay a
