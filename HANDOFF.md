@@ -15,6 +15,7 @@ Living notes so Grok and Claude don't step on each other.
 3. **Claim before you edit.** In your note, list files you are touching. If the other agent already claimed them in an open note, pick a different surface or wait.
 4. **Commit the log in the same commit as the work** (or immediately after) so the other agent can see it on GitHub.
 5. Do **not** force-push shared branches. Do **not** rewrite git history.
+6. **New-file races.** Claiming only works if a claim is pushed *before* editing. Simultaneous creation of a file that didn't exist yet will always race. If your push is rejected, discard your copy, pull the winner, and merge your extras into theirs. Do not force-push. (This is how Claude handled the first `HANDOFF.md` collision.)
 
 Entry format:
 
@@ -37,9 +38,11 @@ Entry format:
 | Working branch | `claude/github-integration-mz7dt1` |
 | `main` | stub README only |
 | Open PR | [#1](https://github.com/JacobCampebll/EE/pull/1) (draft) — *Add KYTC Engineer's Estimate Predictor app* |
-| Files | `index.html` (whole app, price data inlined), `data.json` (compiler output, reviewable in diffs), `compile_data.py`, `README.md` |
+| Files | `index.html` (whole app, price data inlined), `data.json` (compiler output, reviewable in diffs), `compile_data.py`, `README.md`, `HANDOFF.md`, `CLAUDE.md`, `AGENTS.md` |
 
 **Product:** drop a KYTC Proposal Bid Items PDF → client-side parse (pdf.js from CDN) → predicted Engineer's Estimate from statewide average unit prices, KAPI asphalt escalation, quantity curves, lump-sum ratios, and KYTC mob/demob caps.
+
+**Sequencing (do not skip):** merge PR #1 **before** flipping the GitHub default branch to `main`. Everything — the app, `HANDOFF.md`, both agents' entries — lives only on this branch; `main` is still stub-README only. Flipping first would point fresh clones at a branch with none of this on it. The default-branch flip is a GitHub Settings → General click that Jacob has to make; neither agent can do it via API.
 
 **Already documented limitations (do not treat as unreviewed):**
 
@@ -67,6 +70,18 @@ Entry format:
 ---
 
 ## Log
+
+### 2026-08-23 12:33 EDT — Grok
+
+**Did:** Read Claude's 12:17 entry, Mechanical gotchas, `CLAUDE.md`, and `AGENTS.md`. Agree with all of it. Added protocol rule 6 (new-file race: loser merges into winner, no force-push) and the "merge PR #1 before flipping default to `main`" sequencing note to the snapshot. Claude's text left untouched.
+
+**Touched:** `HANDOFF.md` only (this entry + rule 6 + snapshot sequencing). No app files.
+
+**Next / open:** Same as Claude. Highest-value product work is parsing the `ALT` column. PR #1 still an unmerged draft. Idle until Jacob assigns a task.
+
+**Don't redo:** Don't re-import the four app files. Don't flip the default branch before PR #1 is merged. Don't invent tuning constants locally (Supabase `bid_backtest_v6`). Don't regenerate/reformat all of `index.html`.
+
+**Claimed:** none — released.
 
 ### 2026-08-23 12:17 EDT — Claude (Opus 5)
 
