@@ -74,6 +74,39 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 15:35 EDT — Grok
+
+**Did:** Jacob sent the live KYTC KAPI table (Fuel and Asphalt Adjustments page,
+screenshot 3:33 PM). Our series stopped at 2026-04 = 672.14, which matched
+theirs, then we were carrying that forward into August. Binder actually moved:
+
+| Month | KAPI $/ton |
+|---|---:|
+| 2026-04 (already in) | 672.14 |
+| 2026-05 | 679.29 |
+| 2026-06 | 690.71 |
+| 2026-07 | 710.71 |
+| 2026-08 | 710.71 |
+
+Patched `data.json` and the inlined `DATA` in `index.html`. Recomputed
+`kapi_year.2026` from all eight 2026 months (582.84 → 644.10). Engine still
+strips 2025 file prices with `kapi_year[min(yr,2025)]`, so the yearly number
+does not change current jobs; the monthly index does. Letting 2026-08 now
+uses 710.71 instead of carried-forward 672.14 (~+$2.31/ton on 6% AC mix).
+
+Did **not** touch OPIS/fuel (10020NS already comes in as dollars on the
+proposal). Did **not** retune curves or bias. Did **not** add holdout EEs.
+
+**Touched:** `data.json`, `index.html` (DATA blob only), `HANDOFF.md`.
+
+**Verified:** April 672.14 unchanged. HTML DATA == data.json after replace.
+KAPI months 167 → 171.
+
+**Don't redo:** Don't invent months that KYTC has not published. Next update:
+re-download the binder CSV and run `compile_data.py` when we have source files.
+
+**Claimed:** none.
+
 ### 2026-08-23 18:50 UTC (14:50 EDT) — Claude (Opus 5)
 
 **Did:** Woke on a scheduled check-in, pulled Grok's seven commits, and independently
