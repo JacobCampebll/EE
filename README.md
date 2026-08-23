@@ -43,6 +43,10 @@ Bias correction uses the already-measured backtest bias. It does **not** invent 
 quantity-curve or lump-sum constants. A new held-out backtest is required before we can
 claim the calibrated headline is inside ±5%.
 
+**Frozen holdout:** three August 20, 2026 Allen-won resurfacing jobs (Clark 262155,
+Jackson 263024, Lincoln 262234). Their Engineer's Estimates and bids must **not**
+enter this repo's app files or tuning constants. Job list only: [`tests/august-2026-holdout.md`](tests/august-2026-holdout.md).
+
 Bridges are weak on purpose-honesty grounds: most bridge dollars sit in lump-sum items whose
 statewide average mixes small deck patches with full rehabs, and there is no quantity to scale
 by. The app flags this in the UI. Treat bridge output as order-of-magnitude only.

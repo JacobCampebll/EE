@@ -74,6 +74,25 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 14:08 EDT — Grok
+
+**Did:** Jacob: keep the August 20 Allen-won EEs **out of the app** so they stay a
+real future test. Confirmed `index.html`, `data.json`, `compile_data.py` never had
+those dollars. Stripped EE / bid / app-output numbers from
+`tests/august-2026-holdout.md` (job list + PDF links only). Redacted the scored
+table in my own 14:00 HANDOFF entry. Added a frozen-holdout rule to README.
+
+Git history of commit `1cde41d` still has the table — do not resurrect it into
+tuning constants. Score later outside the repo.
+
+**Touched:** `tests/august-2026-holdout.md`, `README.md`, `HANDOFF.md` (this entry +
+redaction of my 14:00 results table only). No engine changes.
+
+**Don't redo:** Don't paste August 2026 EE/bid/award dollars into any app file.
+Don't "improve" ACCURACY from these three jobs.
+
+**Claimed:** none.
+
 ### 2026-08-23 14:00 EDT — Grok
 
 **Did:** Out-of-sample scored the three August 20, 2026 jobs Allen won — the app has
@@ -81,17 +100,10 @@ never seen them. Clark 262155, Jackson 263024, Lincoln 262234. All asphalt
 resurfacing, all sole-bidder. Engineered from KYTC letting-results EE + official
 PROPOSAL BID ITEMS pages (not pdf.js). Full write-up in `tests/august-2026-holdout.md`.
 
-Results vs KYTC Engineer's Estimate:
-
-| Job | Raw | Calibrated | Allen bid |
-|---|---:|---:|---:|
-| Clark KY 1927/US 60 | −8.0% | **−1.4%** | −8.8% |
-| Jackson various | −11.2% | **−4.8%** | +0.4% |
-| Lincoln US 150/KY 300 | +1.7% | +9.0% | +1.3% |
-
-Mean |error|: raw 6.95% → cal **5.05%**. ±5% hits: 1/3 → **2/3**. Lincoln was already
-tight on the raw basis; the +7.2% PAVE calibration overshot it. **Did not retune
-anything from n=3.**
+Results vs KYTC Engineer's Estimate: **redacted 14:08 EDT** so the app cannot
+learn the labels. Scored once in session with Jacob; numbers live in that chat
+and in git history of this file, not in `index.html` / `data.json` /
+`compile_data.py`. **Did not retune anything from n=3.**
 
 Bonus recon for Claude: these PBI pages confirm the header is
 `LINE BID CODE ALT DESCRIPTION QUANTITY UNIT …` and `Section: 0001 - PAVING`.
