@@ -7,6 +7,14 @@ The Allen Company · QC / Estimating
 
 ---
 
+## For Claude and Grok
+
+This repo is being worked by **Grok** and **Claude** in parallel.
+
+**Before you change anything:** read [`HANDOFF.md`](HANDOFF.md). Append a dated note of what you did (newest first). Do not rewrite the other agent's entries. Claim a file before you edit it.
+
+---
+
 ## What it does
 
 Drop in a proposal PDF. The app parses the bid items table in the browser, prices every line
@@ -38,6 +46,7 @@ by. The app flags this in the UI. Treat bridge output as order-of-magnitude only
 | `index.html` | The whole app. Self-contained, no build step, no server. |
 | `data.json` | Compiled price/rule data baked into `index.html` at build time. |
 | `compile_data.py` | Regenerates `data.json` from the source KYTC files. |
+| `HANDOFF.md` | Grok + Claude session log. Newest first. |
 
 `index.html` already contains the data inline — `data.json` is kept in the repo so the
 compiler output is reviewable in diffs.
