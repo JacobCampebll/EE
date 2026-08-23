@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Merge geo_district.json into data.json and re-inline DATA in index.html."""
-import json, re, os, datetime
+import json, os, datetime
 HERE = os.path.dirname(os.path.abspath(__file__))
 data = json.load(open(os.path.join(HERE, "data.json")))
 geo = json.load(open(os.path.join(HERE, "geo_district.json")))
@@ -13,10 +13,21 @@ if "AUBP" not in src:
     data["meta"]["source"] = src + "; KYTC UBER_AUBP_Data 20250610 district medians"
 open(os.path.join(HERE, "data.json"), "w").write(json.dumps(data, separators=(",", ":")))
 html = open(os.path.join(HERE, "index.html")).read()
-m = re.search(r"const DATA = (\{.*?\n\});\n\n/\* ===", html, re.S)
-if not m:
-    m = re.search(r"const DATA = (\{.*?\});\s*\n", html, re.S)
-assert m, "DATA block not found in index.html"
+start = html.find("const DATA = ")
+assert start >= 0, "const DATA not found"
+i = start + len("const DATA = ")
+assert html[i] == "{"
+depth = 0
+end = None
+for j in range(i, len(html)):
+    if html[j] == "{":
+        depth += 1
+    elif html[j] == "}":
+        depth -= 1
+        if depth == 0:
+            end = j + 1
+            break
+assert end, "unbalanced DATA braces"
 s = json.dumps(data, separators=(",", ":"))
-open(os.path.join(HERE, "index.html"), "w").write(html[:m.start(1)] + s + html[m.end(1):])
+open(os.path.join(HERE, "index.html"), "w").write(html[:i] + s + html[end:])
 print("merged", sum(len(v) for v in cur.values()), "district-code cells")
