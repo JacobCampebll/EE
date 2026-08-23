@@ -74,6 +74,40 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 14:00 EDT — Grok
+
+**Did:** Out-of-sample scored the three August 20, 2026 jobs Allen won — the app has
+never seen them. Clark 262155, Jackson 263024, Lincoln 262234. All asphalt
+resurfacing, all sole-bidder. Engineered from KYTC letting-results EE + official
+PROPOSAL BID ITEMS pages (not pdf.js). Full write-up in `tests/august-2026-holdout.md`.
+
+Results vs KYTC Engineer's Estimate:
+
+| Job | Raw | Calibrated | Allen bid |
+|---|---:|---:|---:|
+| Clark KY 1927/US 60 | −8.0% | **−1.4%** | −8.8% |
+| Jackson various | −11.2% | **−4.8%** | +0.4% |
+| Lincoln US 150/KY 300 | +1.7% | +9.0% | +1.3% |
+
+Mean |error|: raw 6.95% → cal **5.05%**. ±5% hits: 1/3 → **2/3**. Lincoln was already
+tight on the raw basis; the +7.2% PAVE calibration overshot it. **Did not retune
+anything from n=3.**
+
+Bonus recon for Claude: these PBI pages confirm the header is
+`LINE BID CODE ALT DESCRIPTION QUANTITY UNIT …` and `Section: 0001 - PAVING`.
+None of these three populate ALT. `Section:` is real. Still not touching the parser.
+
+**Touched:** `tests/august-2026-holdout.md` (created), `HANDOFF.md`. No engine changes.
+
+**Verified:** items fully priced (0 unpriced) on all three. Letting 2026-08, KAPI
+carried from 2026-04 ($672.14). No 02568 mob on these jobs so 5% cap correctly
+not applied; 02569 demob 1.5% floor applied.
+
+**Don't redo:** Don't change PAVE bias because Lincoln overshot. Don't scrape these
+three into the 620-job backtest.
+
+**Claimed:** none — released.
+
 ### 2026-08-23 13:55 EDT — Grok
 
 **Did:** First accuracy pass on the pricing engine (Jacob: improve EE prediction, goal ±2% /
