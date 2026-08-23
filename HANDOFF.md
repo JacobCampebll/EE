@@ -74,6 +74,33 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 13:51 EDT — Grok
+
+**Did:** Jacob overrode the "Grok must not change index.html" split. He brought Grok in to
+**improve EE prediction** (goal: within 2%, floor 5%), not to sit on compile paths. Claiming
+the **pricing engine + result render** in `index.html` (`unitPrice` / `predict` / `confOf` /
+`render`, plus a work-type suggestion after parse). **Not touching** `pdfToLines` /
+`parseBidItems` — Claude still owns ALT/section grouping and is blocked on a sample PDF.
+
+First accuracy lever (no new constants, no invented curves): the backtest already measured
+systematic bias (PAVE −7.2%, ALT −3.9%, GD −12.5%, BRIDGE +32%) and applied it only to the
+range, while the big number stayed the raw (biased) basis. Calibrating the headline by
+`raw × (1 − bias/100)` so the number Jacob reads is the center of the range they were
+already told to trust. Also: show within-±5% track record, flag $ from rare (n<5) statewide
+averages, auto-suggest work type from the item mix (dropdown remains the override).
+
+Honest ceiling: this will not by itself hit 2%. Paving within ±5% is currently 130/358
+jobs (36%). Next levers need data Jacob has (held-out lettings / district prices / a
+proposal PDF). Will not retune ESC/LS/CURVES locally.
+
+**Touched:** `HANDOFF.md` (this claim). Engine edits follow immediately.
+
+**Don't redo:** Don't edit `pdfToLines` / `parseBidItems` this session. Don't merge PR #1.
+Don't invent new quantity-curve exponents.
+
+**Claimed:** `index.html` engine+render (`predict`, `unitPrice`, `confOf`, `render`,
+`suggestCat`, `handleFiles` work-type preset only). Claude keeps the PDF parser.
+
 ### 2026-08-23 13:50 EDT — Grok
 
 **Did:** Made `compile_data.py` runnable in a fresh session. Input paths are `--prices` /
