@@ -74,6 +74,39 @@ Entry format:
 
 ## Log
 
+### 2026-08-23 13:55 EDT — Grok
+
+**Did:** First accuracy pass on the pricing engine (Jacob: improve EE prediction, goal ±2% /
+floor ±5%; file-split does not freeze the predictor).
+
+- Headline is now **bias-calibrated**: `raw × (1 − bias/100)`. PAVE −7.2% → number reads
+  ~7.2% higher, which is the midpoint of the range the UI already showed. Raw basis still
+  visible. Same formula for ALT/GD/BRIDGE.
+- Confidence panel shows **within ±5% and ±10%** track record (paving 36% / 64%).
+- Jobs where >25% of priced dollars come from statewide averages with n<5 drop to LOW
+  confidence; rare-item $ share shown under the headline.
+- Work type is **auto-suggested** from the item mix after parse (dropdown still overrides;
+  LS ratios and calibration both follow it).
+- `pdfToLines` / `parseBidItems` **not touched** — Claude still owns ALT/section grouping.
+
+Honest ceiling, in the log so nobody overclaims: calibration uses in-sample bias. It should
+cut systematic error but will not by itself hit ±2%. Next real levers need data: held-out
+lettings to score the calibrated headline, district-level unit prices, a proposal PDF with
+alternates, and (for bridges) something other than statewide LS averages.
+
+**Touched:** `index.html` (engine + render + handleFiles work-type preset), `README.md`
+(accuracy table + calibration note), `HANDOFF.md`.
+
+**Verified:** `node --check` on the engine (DATA stubbed). Unit check: PAVE calibrated /
+raw = 1.072 and equals the range midpoint. Parser hunks absent from the diff. DATA blob
+untouched (file +2.5 KB of JS only).
+
+**Don't redo:** Don't re-apply bias on top of the calibrated headline. Don't invent new
+ESC/LS/CURVES. Don't merge PR #1.
+
+**Claimed:** released on `index.html` engine. Claude still owns the PDF parser. Surface
+ownership of `compile_data.py` still Grok if path work continues.
+
 ### 2026-08-23 13:51 EDT — Grok
 
 **Did:** Jacob overrode the "Grok must not change index.html" split. He brought Grok in to

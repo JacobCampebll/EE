@@ -26,12 +26,22 @@ data is used.
 
 ## Accuracy (620 KYTC projects backtested)
 
-| Work type | Mean error | Median error | Within ±10% |
-|---|---|---|---|
-| Resurfacing | 9.5% | 7.5% | 64% |
-| Alternates (micro / thinlay) | 7.7% | 6.6% | 68% |
-| Grade & drain | 16.8% | 15.1% | 29% |
-| Bridge | 46.2% | 18.9% | 17% |
+These figures are the **raw statewide basis** before calibration. The app's headline number
+is now `raw × (1 − bias)` so it sits at the center of the range (paving was systematically
+7.2% low; that is now applied to the number you read, not just the band).
+
+Target is **±5%**, ideally **±2%**. We are not there yet — paving hit ±5% on 36% of jobs.
+
+| Work type | Mean error | Median | Bias | Within ±5% | Within ±10% |
+|---|---|---|---|---|---|
+| Resurfacing | 9.5% | 7.5% | −7.2% | 36% | 64% |
+| Alternates (micro / thinlay) | 7.7% | 6.6% | −3.9% | 38% | 68% |
+| Grade & drain | 16.8% | 15.1% | −12.5% | 13% | 29% |
+| Bridge | 46.2% | 18.9% | +32% | 8% | 17% |
+
+Bias correction uses the already-measured backtest bias. It does **not** invent new
+quantity-curve or lump-sum constants. A new held-out backtest is required before we can
+claim the calibrated headline is inside ±5%.
 
 Bridges are weak on purpose-honesty grounds: most bridge dollars sit in lump-sum items whose
 statewide average mixes small deck patches with full rehabs, and there is no quantity to scale

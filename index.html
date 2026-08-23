@@ -218,29 +218,60 @@ function predict(items, letKey, cat){
   const total = Sfull + mob + demob + adj;
 
   const acc = DATA.meta.accuracy[cat] || DATA.meta.accuracy.GD;
-  return { rows, unpriced, S: Sfull, mob, demob, adj, total, hasMob, matched, work,
+  // Backtest bias is (basis − EE)/EE. PAVE −7.2% means the raw basis ran low.
+  // Calibrate the headline to the center of the range already shown to the user.
+  const calibrated = total * (1 - (acc.bias || 0) / 100);
+  let rareExt = 0, pricedExt = 0;
+  for (const r of rows){
+    if (r.ext) { pricedExt += r.ext; if (r.occ != null && r.occ < 5) rareExt += r.ext; }
+  }
+  const rareShare = pricedExt ? rareExt / pricedExt : 0;
+  return { rows, unpriced, S: Sfull, mob, demob, adj, total, calibrated, rareShare,
+           hasMob, matched, work,
            itemCov: work ? matched / work : 0, acc, cat, letKey, ratioPct };
 }
 
-function confOf(cov, cat, acc){
+function confOf(cov, cat, acc, rareShare){
   if (cat === "BRIDGE") return ["c-low","LOW"];
+  if ((rareShare || 0) > 0.25) return ["c-low","LOW"];
   if (cov >= CONFIG.confHigh && acc.mae <= 10) return ["c-high","HIGH"];
   if (cov >= CONFIG.confMed  && acc.mae <= 20) return ["c-med","MODERATE"];
   return ["c-low","LOW"];
 }
 
+function suggestCat(items){
+  let asph = 0, earth = 0, br = 0, alt = 0;
+  for (const it of items){
+    const d = (it.desc || "").toUpperCase();
+    const c = it.code || "";
+    if (/ALTERNATE|MICROSURFACING|THINLAY/.test(d)) alt++;
+    if (/ASPH|PAVE MILLING|DGA BASE|LEVELING & WEDGING/.test(d)) asph += it.qty || 0;
+    if (/EXCAVAT|EMBANKMENT|BORROW EXCAVATION/.test(d) || c === "02200" || c === "02230") earth += it.qty || 0;
+    if (/^08/.test(c) || /BRIDGE|STRUCTURAL STEEL|REMOVE EXISTING DECK|GIRDER|ELASTOMERIC/.test(d)) br++;
+  }
+  if (alt >= 3) return { cat: "ALT", why: "item text looks like micro/thinlay alternates" };
+  if (br >= 6 && asph < 200) return { cat: "BRIDGE", why: "many structure / bridge bid codes" };
+  if (earth > 3000 && earth >= asph) return { cat: "GD", why: "earthwork quantities dominate" };
+  return { cat: "PAVE", why: "asphalt / resurfacing items dominate" };
+}
+
 function render(r){
-  const [cls, lbl] = confOf(r.itemCov, r.cat, r.acc);
+  const [cls, lbl] = confOf(r.itemCov, r.cat, r.acc, r.rareShare);
   // band from this work type's own backtest spread, shifted by its measured bias
   const b = r.acc.mae / 100, bias = r.acc.bias / 100;
   const lo = r.total * (1 - b - bias), hi = r.total * (1 + b - bias);
   const top = r.rows.filter(x => x.ext != null).sort((a,c) => c.ext - a.ext).slice(0, 16);
+  const calSign = r.acc.bias < 0 ? "+" : "\u2212";
+  const calPct = Math.abs(r.acc.bias).toFixed(1);
+  const w5 = r.acc.w5 != null ? Math.round(100 * r.acc.w5 / r.acc.n) : null;
+  const w10 = Math.round(100 * r.acc.w10 / r.acc.n);
 
   const wedge = Math.abs(r.acc.bias) > 2 ? `
-    <div class="note ok"><b>Bias adjustment applied to the range.</b> Across ${r.acc.n} backtested
-    ${r.cat} projects this basis ran ${r.acc.bias < 0 ? "below" : "above"} the real Engineer's Estimate by
-    ${Math.abs(r.acc.bias).toFixed(1)}% on average, so the range above is shifted accordingly. The point
-    estimate is the raw basis — treat the range as the answer.</div>` : "";
+    <div class="note ok"><b>Headline is bias-calibrated.</b> Across ${r.acc.n} backtested
+    ${r.cat} jobs the raw statewide basis ran ${r.acc.bias < 0 ? "below" : "above"} the real
+    Engineer's Estimate by ${calPct}% on average. The big number is
+    raw \u00d7 (1 \u2212 bias) so it sits at the center of the range. Raw basis ${fmt(r.total)}.
+    Goal is \u00b15% (ideally \u00b12%) \u2014 this work type hit \u00b15% on ${w5}% of backtests, \u00b110% on ${w10}%.</div>` : "";
 
   const unp = r.unpriced.length ? `
     <div class="note bad"><b>${r.unpriced.length} item${r.unpriced.length>1?"s":""} could not be priced</b>
@@ -257,7 +288,9 @@ function render(r){
   <div class="hero">
     <div class="panel">
       <h2>Predicted Engineer's Estimate</h2>
-      <div class="bignum">${fmt(r.total)}</div>
+      <div class="bignum">${fmt(r.calibrated)}</div>
+      <div class="range">Calibrated EE &nbsp;·&nbsp; raw basis ${fmt(r.total)}
+        (${calSign}${calPct}% backtest)${r.rareShare > 0.05 ? ` &nbsp;·&nbsp; ${(r.rareShare*100).toFixed(0)}% of $ from rare items (n<5)` : ""}</div>
       <div class="range">Expected range <b>${fmt(lo)} — ${fmt(hi)}</b> &nbsp;·&nbsp;
         <span class="conf ${cls}">${lbl} CONFIDENCE</span></div>
       <div style="margin-top:14px">
@@ -274,9 +307,10 @@ function render(r){
       <div class="kv"><span>Items priced</span><b>${r.matched} / ${r.work}</b></div>
       <div class="meter"><div style="width:${(r.itemCov*100).toFixed(0)}%;background:var(--accent)"></div></div>
       <div class="kv" style="margin-top:10px"><span>Track record — ${r.cat}</span><b>${r.acc.n} jobs</b></div>
-      <div class="kv"><span>Mean error</span><b>${r.acc.mae.toFixed(1)}%</b></div>
+      <div class="kv"><span>Mean error (raw basis)</span><b>${r.acc.mae.toFixed(1)}%</b></div>
       <div class="kv"><span>Median error</span><b>${r.acc.median.toFixed(1)}%</b></div>
-      <div class="kv"><span>Within ±10%</span><b>${Math.round(100*r.acc.w10/r.acc.n)}% of jobs</b></div>
+      <div class="kv"><span>Within ±5% / ±10%</span><b>${w5}% / ${w10}% of jobs</b></div>
+      <div class="kv"><span>Measured bias (now applied)</span><b>${r.acc.bias > 0 ? "+" : ""}${r.acc.bias.toFixed(1)}%</b></div>
       <div class="kv"><span>Letting month</span><b>${r.letKey}</b></div>
       <div class="kv"><span>Binder index (KAPI)</span><b>$${kapiAt(r.letKey).v.toFixed(2)}/ton${kapiAt(r.letKey).est ? " *" : ""}</b></div>
       ${kapiAt(r.letKey).est ? `<div class="note"><b>* Binder index carried forward.</b> KYTC has published
@@ -383,9 +417,13 @@ async function handleFiles(files){
       document.getElementById("reviewPanel").classList.add("hide"); return;
     }
     const priced = parsed.filter(i => DATA.prices[i.code] || DATA.ls_ratios[i.code]).length;
+    const guess = suggestCat(parsed);
+    document.getElementById("wtSelect").value = guess.cat;
     st.innerHTML = `Read <b>${parsed.length}</b> bid items from ${files.length} file${files.length>1?"s":""}.`;
     document.getElementById("parseSummary").innerHTML =
-      `<b>${parsed.length}</b> items · <b>${priced}</b> priced · <b>${parsed.length-priced}</b> with no data.`;
+      `<b>${parsed.length}</b> items · <b>${priced}</b> priced · <b>${parsed.length-priced}</b> with no data.
+       Work type set to <b>${document.getElementById("wtSelect").selectedOptions[0].text}</b>
+       (${guess.why}). Change the dropdown if that's wrong — lump-sum % and calibration both follow it.`;
     document.getElementById("itemsTable").innerHTML = `<table><thead><tr><th>Line</th><th>Code</th>
       <th class="hidesm">Description</th><th class="num">Qty</th><th>Unit</th><th>Basis</th></tr></thead><tbody>
       ${parsed.map(i => { const e = DATA.prices[i.code], l = DATA.ls_ratios[i.code];
@@ -412,8 +450,9 @@ function init(){
     `${Object.keys(DATA.prices).length} item codes · built ${DATA.meta.built}`;
   document.getElementById("foot").innerHTML =
     `Data built ${DATA.meta.built} from KYTC statewide average unit bid prices (2022–2025) + KAPI binder index.<br>` +
-    `Backtested on ${DATA.meta.projects_backtested} KYTC projects — resurfacing ${a.PAVE.mae}% mean error, ` +
-    `alternates ${a.ALT.mae}%, grade &amp; drain ${a.GD.mae}%, bridges ${a.BRIDGE.mae}%. Not a substitute for a takeoff.`;
+    `Backtested on ${DATA.meta.projects_backtested} KYTC projects. Raw-basis mean error: resurfacing ${a.PAVE.mae}%, ` +
+    `alternates ${a.ALT.mae}%, grade & drain ${a.GD.mae}%, bridges ${a.BRIDGE.mae}%. Headline is bias-calibrated. ` +
+    `Goal ±5% (ideally ±2%). Not a substitute for a takeoff.`;
 
   const ls = document.getElementById("letSelect");
   const published = Object.keys(DATA.kapi).sort();
