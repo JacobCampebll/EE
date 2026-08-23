@@ -1,0 +1,16 @@
+;
+
+/* ============================================================
+   ENGINE  (mirrors the inlined app — keep in sync with index.html)
+   ============================================================ */
+// NOTE: Full engine tail is applied by apply_gate_and_geo.py from the
+// local working tree. If this placeholder is all that is on the remote,
+// run the script from a clone that has the full index_engine_tail.js.txt
+// after pulling Grok's working copy, OR re-copy from index.html after
+// the DATA object.
+//
+// Calibration gate summary (also documented in HANDOFF.md):
+//   localShare = (county + district) / (county + district + state)
+//   if localShare >= 0.5: headline = raw total (biasApplied=false)
+//   else: headline = total * (1 - bias/100)
+// No new bias constant is invented.
