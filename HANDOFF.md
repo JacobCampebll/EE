@@ -84,6 +84,21 @@ Entry format:
 
 ## Log
 
+### 2026-08-24 10:50 EDT — Grok
+
+**Did:** Removed visible “The Allen Company” / “QC / Estimating” branding from the app
+(title tag + `CONFIG.subtitle`) and the same line from `README.md`. Header now just
+“KYTC Engineer's Estimate Predictor”. No engine/data changes.
+
+**Touched:** `index.html`, `README.md`, `HANDOFF.md`
+
+**Next / open:** Netlify (`predictee`) should redeploy this branch automatically.
+
+**Don't redo:** Do not restore that subtitle unless Jacob asks. Do not force-push.
+Do not merge PR #1. Do not unseal holdout EEs.
+
+**Claimed:** none.
+
 ### 2026-08-23 23:25 EDT — Grok
 
 **Did:** Option B — pushed the **real** files, not placeholders. Remote HEAD `7c90de7` was

@@ -3,8 +3,6 @@
 Predicts the KYTC **Engineer's Estimate** for a highway contract from the Proposal Bid Items
 PDF alone — before letting, before any bid tab exists.
 
-The Allen Company · QC / Estimating
-
 ---
 
 ## Deploy (Netlify)
