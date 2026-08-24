@@ -1,0 +1,18 @@
+{
+  "_note": "County pods: market groupings (same plants, same haul, same bidders) used as a pricing tier between county and district. GARBOYLIN deliberately crosses a KYTC district line -- Lincoln is D08 but its market is with Garrard and Boyle in D07. Do not 'correct' that. Jackson is intentionally absent: it prices on its own, county then district.",
+  "pods": {
+    "BLUEGRASS": {
+      "label": "Bluegrass",
+      "counties": ["JESSAMINE", "WOODFORD", "FAYETTE"]
+    },
+    "MADCLARK": {
+      "label": "Madison-Clark",
+      "counties": ["MADISON", "CLARK"]
+    },
+    "GARBOYLIN": {
+      "label": "Garrard-Boyle-Lincoln",
+      "counties": ["GARRARD", "BOYLE", "LINCOLN"]
+    }
+  },
+  "pod": {}
+}

@@ -84,6 +84,58 @@ Entry format:
 
 ## Log
 
+### 2026-08-24 17:05 UTC (13:05 EDT) — Claude (Opus 5)
+
+**Did:** Built the county-pod tier claimed above. Cascade in `localPrice()` is now
+**county → pod → district → statewide**, decided per item code, `geo_min_n` (3) at every tier.
+
+- `podOf(county)` maps a county to its pod; counties in no pod (Jackson) are unaffected.
+- Pod definitions live in `pods.json` and merge into `DATA.geo.pods` — reviewable as data
+  rather than buried in the engine.
+- `merge_pods.py` splices them into `data.json` + the inlined `DATA` using the same
+  brace-matched replace `merge_geo.py` uses, so it never rewrites the rest of `index.html`.
+  It refuses to run if a county is in two pods (which would make the tier depend on object
+  key order) or if a pod county is missing from `county_to_district` (which would break
+  fall-through). Re-run it once the real tables exist — definitions and tables share the file.
+- Gate and UI: pod counts as local, so `localShare` is now (county+pod+district)/unit lines.
+  Confidence panel and the wedge note break out pod separately; pod rows get their own colour
+  in the item table.
+
+**Shipped state is a no-op.** `geo.pod` is `{}` — there are no pod price tables yet, so every
+job resolves exactly as it did before this commit. That is asserted, not assumed (check 8).
+
+**Verified:** new `tests/test_cascade_js.mjs`, 9 checks, all passing, run against the real
+`localPrice`/`podOf` extracted from `index.html` (not a copy — same approach as
+`test_parse_js.mjs`). It covers: county wins when it clears n≥3; thin county falls to pod;
+**pod overrides Lincoln's D08**; thin pod falls to district; thin district falls through to
+statewide; Boyle falls to *its own* D07 rather than Lincoln's D08; Jackson never picks up a
+pod; and empty pod tables behave exactly as before. Mutation-checked — neutering `podOf` to
+return `""` fails 2 checks, so the suite can actually fail. Also: `test_parse.py` 0,
+`test_parse_js.mjs` 0, `node --check` clean on the inlined script, `data.json` still matches
+the inlined `DATA`.
+
+**Next / open — this is the half that matters:** pod *price tables* need the KYTC
+`UBER_AUBP_Data 20250610.xlsx`, which is not in the repo (only the derived
+`geo_district.json`, and a district median cannot be decomposed back into counties). Build
+them by pooling the **raw bid rows** across a pod's member counties and taking a median with
+`n` — not by averaging the member counties' medians, which yields a number with no `n` behind
+it and nothing to gate on. Same shape as `geo_district.json`: `{POD_ID: {code: {p, n, yr}}}`
+into `pods.json` under `"pod"`, then `python3 merge_pods.py`.
+
+**Reminder on scoring:** Pod `GARBOYLIN` was drawn partly because Lincoln 262234 misses. A
+post-pod Lincoln number is not evidence — it is the grouping fitting the job it was chosen
+for. Score this on lettings nobody tuned on.
+
+**Touched:** `index.html` (`podOf` + `localPrice` + gate counts + labels), `pods.json` (new),
+`merge_pods.py` (new), `tests/test_cascade_js.mjs` (new), `data.json` (pod defs merged),
+`HANDOFF.md`. Did not touch `pdfToLines`/`parseBidItems`, the tuning constants, or
+`merge_geo.py`.
+
+**Don't redo:** Don't "fix" `GARBOYLIN` for crossing a district line. Don't add pod prices by
+hand. Don't average county medians to make pod medians.
+
+**Claimed:** released — `index.html` is free.
+
 ### 2026-08-24 16:45 UTC (12:45 EDT) — Claude (Opus 5)
 
 **Did:** Claiming before editing, per rule 3. Jacob asked for **county pods** — a pricing tier
