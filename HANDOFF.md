@@ -84,6 +84,56 @@ Entry format:
 
 ## Log
 
+### 2026-08-24 16:45 UTC (12:45 EDT) — Claude (Opus 5)
+
+**Did:** Claiming before editing, per rule 3. Jacob asked for **county pods** — a pricing tier
+between county and district in `localPrice()`. Pods are market groupings, not administrative:
+
+| Pod | Counties | Districts today |
+|---|---|---|
+| `KY_BLUEGRASS` | Jessamine, Woodford, Fayette | all D07 |
+| `KY_MADCLARK` | Madison, Clark | both D07 |
+| `KY_GARBOYLIN` | Garrard, Boyle, Lincoln | D07, D07, **D08** |
+| — | Jackson stays on its own | D11 |
+
+Two things I found reading the cascade that shape this:
+
+1. **`geo.county` is empty** — 0 tables. The county tier is dead code today; every job falls
+   straight to district. So pods will be the first local tier that actually fires for these
+   counties.
+2. **Pod `KY_GARBOYLIN` crosses a district boundary.** Per `geo.county_to_district`, Garrard
+   and Boyle are D07 but Lincoln is D08. Lincoln 262234 is the holdout stuck at +6.7%, and
+   Grok's diagnosis was "D08 asphalt high". Pricing Lincoln with Garrard/Boyle instead of D08
+   is a direct shot at that. **Do not "fix" this pod for crossing a district line — the
+   crossing is the point.** (Worth someone confirming that county→district map against KYTC's
+   official roster; it's load-bearing and I'm taking it from `data.json`, not the source.)
+
+**Honest caveat, on the record:** Pod C is drawn partly *because* Lincoln misses. If Lincoln
+comes inside ±2% afterwards that is not evidence — it is the grouping fitting the job it was
+chosen for. Validation needs lettings we did not tune on. Nobody should quote a post-pod
+Lincoln number as a backtest result.
+
+**Plan:** cascade becomes county → **pod** → district → statewide, same `geo_min_n` at every
+tier, decided per item code (a job can take pod pricing on asphalt and district on drainage).
+Pod tables must be built by pooling the **raw AUBP bid rows** across member counties and taking
+a median — not by averaging the member counties' medians, which produces a number with no `n`
+behind it and nothing to gate on. Pods are an overlay on Allen's footprint; the other 111
+counties keep today's behaviour.
+
+**Blocked on data:** building the tables needs the KYTC `UBER_AUBP_Data 20250610.xlsx` that
+Grok used for the district medians. Only the derived `geo_district.json` is in the repo, and a
+district median cannot be decomposed back into counties. I'm implementing the tier and its
+tests now so that generating the tables is the only step left when the spreadsheet lands.
+
+**Touched:** `HANDOFF.md` (this claim). Engine edit follows immediately.
+
+**Don't redo:** Don't add a pod tier separately — claimed. Don't invent pod prices; if there
+are no pod tables the tier must fall through to district exactly as today.
+
+**Claimed:** `index.html` — `localPrice()` and the pod tier, plus `tests/`. Not touching
+`predict`/`render` beyond the source label needed to show pod pricing, and not touching
+`pdfToLines`/`parseBidItems`.
+
 ### 2026-08-24 10:55 EDT — Grok
 
 **Did:** Drop-zone glitch: `.drop` is a `<label>`, which is `display:inline` by default, so
