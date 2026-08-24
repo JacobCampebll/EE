@@ -27,12 +27,17 @@
          font-weight:600;cursor:pointer;margin-top:10px;margin-right:8px}
   button:hover{background:var(--accent2)}
   button.ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:500}
-  .drop{border:1.5px solid var(--line);border-radius:var(--radius);padding:26px;text-align:center;
-        color:var(--muted);cursor:pointer;background:var(--panel2)}
+  .panel{position:relative}
+  .drop{display:block;width:100%;border:1.5px solid var(--line);border-radius:var(--radius);padding:26px;text-align:center;
+        color:var(--muted);cursor:pointer;background:var(--panel2);box-sizing:border-box}
   .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
   .drop b{display:block;color:var(--text);font-size:1.05rem;margin-bottom:5px}
   .drop .hint{display:block;font-size:.8rem;line-height:1.45}
-  .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;clip:rect(0 0 0 0)}
+  /* Keep the native file input in the DOM (iOS needs it) but never paint it.
+     An inline <label> plus a 1px file control was drawing a green glow beside the drop zone. */
+  .vh{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+      clip:rect(0,0,0,0);clip-path:inset(50%);border:0;white-space:nowrap;opacity:0}
+  .vh::file-selector-button{display:none}
   @media(max-width:640px){
     body{padding:11px}
     h1{font-size:1.12rem} .sub{font-size:.76rem}

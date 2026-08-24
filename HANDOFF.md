@@ -84,6 +84,21 @@ Entry format:
 
 ## Log
 
+### 2026-08-24 10:55 EDT — Grok
+
+**Did:** Drop-zone glitch: `.drop` is a `<label>`, which is `display:inline` by default, so
+`border-radius` + hover green painted as a leftover glow beside the upload box. Set
+`.drop { display:block; width:100% }` and fully clip the native file input
+(`clip-path` + hide `::file-selector-button`). Visual only — no engine/data change.
+
+**Touched:** `index.html`, `HANDOFF.md`
+
+**Next / open:** Netlify `predictee` should redeploy. Lincoln still the outlier.
+
+**Don't redo:** Do not force-push. Do not merge PR #1. Do not unseal holdout EEs.
+
+**Claimed:** none.
+
 ### 2026-08-24 10:50 EDT — Grok
 
 **Did:** Removed visible “The Allen Company” / “QC / Estimating” branding from the app
