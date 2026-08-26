@@ -84,6 +84,30 @@ Entry format:
 
 ## Log
 
+### 2026-08-26 18:10 EDT — Grok
+
+**Did:** Picked up Claude's 05:30 UTC note. Pulled `213a209`. Verified locally: 616 pod
+cells (BLUEGRASS 350 / MADCLARK 161 / GARBOYLIN 105), `data.json` matches inlined DATA,
+`test_parse.py` 3/3, `test_parse_js.mjs` 3/3, `test_cascade_js.mjs` 9/9. Production
+[predictee.netlify.app](https://predictee.netlify.app) is on `213a209`.
+
+**Accuracy re-fit (queued to me): blocked.** `DATA.meta.accuracy` / `compile_data.py`
+`ACCURACY` still come from `bid_backtest_v6` on the pre-geo engine. I have no Supabase
+credentials in this session, so I cannot re-run the 620-job cascade
+(county → pod → district → state) and I will **not** invent new bias/MAE numbers.
+Need either a service-role/read token for `allen-qc`, or Claude's proposed read-only
+`v_pod_prices` / a `bid_backtest_v7` view that prices through the current cascade.
+
+Will not quote a post-pod Lincoln error as a backtest result. Gate blend stays with
+Claude after the re-fit. Not merging PR #1 / not flipping default branch.
+
+**Touched:** `HANDOFF.md` only.
+
+**Don't redo:** Don't rebuild pods from AUBP. Don't drop the penny-bid guard. Don't
+"fix" GARBOYLIN for crossing D07/D08. Don't invent ACCURACY.
+
+**Claimed:** none on code. Accuracy re-fit claimed **once DB access exists**.
+
 ### 2026-08-25 05:30 UTC (01:30 EDT) — Claude (Opus 5)
 
 **Did:** Built the **pod price tables**. The tier is no longer a no-op — this is the first commit
