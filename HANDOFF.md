@@ -84,6 +84,67 @@ Entry format:
 
 ## Log
 
+### 2026-08-25 05:30 UTC (01:30 EDT) — Claude (Opus 5)
+
+**Did:** Built the **pod price tables**. The tier is no longer a no-op — this is the first commit
+that changes estimates. Source is **not** the AUBP spreadsheet: `allen-qc` already holds the raw
+letting data (`bid_items` 21,717 lines x `bid_projects` with county + letting_date), which is
+better — letting-level, county-tagged, and current through **2026-07-23** vs AUBP's 2025-06-10.
+
+**Method** (documented in `pods.json` `_tables_note` too): pool the raw bid rows across a pod's
+member counties, lettings 2022+, and take a median with n>=3. Every row is normalised to 2025
+dollars *before* the median — non-asphalt on the ESC "other" chain, asphalt by stripping binder
+at that year's KAPI, escalating the residual on the asphalt chain, re-adding binder at 2025 KAPI
+— so `yr` is 2025 on every cell and the tier is consistent with `geo.district`.
+
+**Two data-quality decisions, both measured rather than assumed:**
+
+- **Penny bids.** Unbalanced bidding puts $0.01 rows in the data; a raw median returned `0.01`
+  for codes like 02706/02707/02708. Cells are dropped when the median is under $0.05 or outside
+  0.25x–4x the newest statewide average. Lump-sum ratio codes are excluded outright.
+- **low_bid vs AUBP average.** District tables are AUBP *average* bids; I used *low* bid, so I
+  checked whether that biases the pod tier cheap. Median `low_bid / avg_all_bidders` = **0.9953**
+  over 2,324 multi-bidder lines — 0.5% under, immaterial. Tiers are comparable.
+
+**Result on the three fixtures** — statewide fallbacks, before → after:
+
+| Job | Before | After | Note |
+|---|---|---|---|
+| Clark (MADCLARK) | 1 | **0** | 26 of 27 now pod-priced |
+| Jackson (no pod) | 0 | 0 | unchanged by design |
+| Lincoln (GARBOYLIN) | 10 | **3** | 23 pod, 2 district |
+
+Lincoln's remaining three are 00307 (1,300 TON asphalt — the only material one), 24880EC (n=2 in
+pod) and 06546 (n=1). The big one, **00388 at 4,300 TON, now prices from the pod at $110.95**
+instead of a statewide average — that was the single largest contributor to the +6.7% miss.
+
+**Holdout is clean:** the three August 2026 contracts are not in the database at all (checked by
+contract_id and by letting_date >= 2026-08-01, both empty). No leakage.
+
+**Verified:** transcription checksummed against the DB — cell counts, price sums and n sums match
+to the cent for all three pods (350 / 161 / 105 cells; 616 total). All three suites exit 0.
+`data.json` == inlined `DATA`. `node --check` clean.
+
+**Still not evidence:** GARBOYLIN was drawn partly because Lincoln missed. Do not quote a
+post-pod Lincoln number as a backtest result. Score on lettings nobody tuned on.
+
+**Touched:** `pods.json` (tables + method note), `data.json`, `index.html` (DATA only — no engine
+change beyond the tier already shipped), `HANDOFF.md`.
+
+**Next / open:** (a) the accuracy constants in `DATA.meta.accuracy` were fitted on the pre-geo
+engine and are now doubly stale — the 620-job backtest wants re-running through the current
+cascade in Supabase, which is Grok's surface; (b) `bid_items.engineer_unit_price` exists but is
+populated on only 574 of 21,717 lines — if that were backfilled we could price against KYTC's own
+estimator numbers instead of contractor bids, which is what we are actually predicting; (c) pod
+tables are not reproducible without MCP because RLS blocks anon REST reads — a read-only
+`v_pod_prices` view would make `merge_pods.py` self-service, but that is a production DB change
+and needs Jacob's say-so.
+
+**Don't redo:** Don't rebuild pod tables from the AUBP spreadsheet — Supabase is fresher and
+letting-level. Don't drop the penny-bid guard. Don't "fix" GARBOYLIN for crossing a district line.
+
+**Claimed:** none — released.
+
 ### 2026-08-24 17:05 UTC (13:05 EDT) — Claude (Opus 5)
 
 **Did:** Built the county-pod tier claimed above. Cascade in `localPrice()` is now
