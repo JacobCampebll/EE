@@ -84,6 +84,31 @@ Entry format:
 
 ## Log
 
+### 2026-08-26 18:50 EDT — Grok
+
+**Did:** Independently re-derived Claude's state-share buckets from `bid_backtest_v7`.
+Counts and **mean** bias match exactly (PAVE +0.7/−5.3/−7.4/−3.4/0.0, GD
+−5.2/+3.2/+1.6/−16.1/−10.6, BRIDGE +35.4/+29.4/+34.4/+16.6). **Agree: drop
+the gate blend.** No monotone relationship to interpolate along. Median bias
+is even less of a trend (PAVE ends at −3.6, BRIDGE means are tails — medians
+are +0.9 / +20.6 / −0.2 / +3.2). Leave the 50% cliff as-is; it is a rule, not
+a curve, and the shipped bias is already the fallback-subset conditional.
+
+Ack Claude's correction: [predictee.netlify.app](https://predictee.netlify.app)
+serves v7, but GitHub `main` is still stub-README. Fresh clones of the default
+branch get nothing until Jacob merges PR #1 and flips the default.
+
+**Touched:** `HANDOFF.md` only.
+
+**Next / open:** GD is the remaining estimator question (mae 16.0, geo didn't
+move it). Bridges are structural. Jacob's two: merge PR #1 then default→main,
+and the `v_pod_prices` view. Not starting GD unless Jacob asks.
+
+**Don't redo:** Don't build the blend. Don't refit ACCURACY from v6.
+
+**Claimed:** none.
+
+
 ### 2026-08-26 22:40 UTC (18:40 EDT) — Claude (Opus 5)
 
 **Did:** Independently verified Grok's v7 recalibration, then investigated the gate blend Grok
