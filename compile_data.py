@@ -55,11 +55,13 @@ LS_RATIOS = {
 
 CURVES_RAW = "00001:-0.148:1595.4,00003:-0.099:11615.5,00078:-0.185:6900.2,00100:-0.462:102.5,00212:-0.184:1944.3,00214:-0.159:5952.2,00301:-0.166:2574.5,00388:-0.135:4045.4,00462:-0.324:234.0,00522:-0.160:1050.5,01310:-0.371:96.5,02200:-0.206:49427.2,02230:-0.261:29514.7,02231:-0.212:546.7,02351:-0.103:1969.5,02381:-0.221:3891.9,02483:-0.114:1073.0,02602:-0.178:17390.7,02696:-0.724:27442.8,02697:-0.706:35299.4,02720:-0.336:997.1,03240:-0.217:608.5,05950:-0.305:10226.3,05985:-0.382:78353.0,06410:-0.141:719.8,06514:-0.271:35924.9,06515:-0.190:58903.5,06542:-0.167:33836.1,06543:-0.190:30278.5,06546:-0.126:1699.7,06547:-0.141:453.9,06556:-0.066:1618.3,06557:-0.061:1704.8,06566:-0.132:944.4,06568:-0.136:168.9,08002:-0.370:143.7,08019:-0.202:1076.5,08151:-0.094:70830.3,20071EC:-0.448:65232.7,20458ES403:-0.632:17358.1,21653ES403:-0.107:2363.2,23071EN:-0.224:10648.5,23378EC:-0.233:27567.3"
 
-ACCURACY = {   # from bid_backtest_v6 (job-level qty curves, LS deduped), 620 projects
-  "PAVE":   {"n": 358, "mae": 9.5,  "median": 7.5,  "bias": -7.2,  "w5": 130, "w10": 229},
-  "ALT":    {"n": 79,  "mae": 7.7,  "median": 6.6,  "bias": -3.9,  "w5": 30,  "w10": 54},
-  "GD":     {"n": 119, "mae": 16.8, "median": 15.1, "bias": -12.5, "w5": 15,  "w10": 35},
-  "BRIDGE": {"n": 64,  "mae": 46.2, "median": 18.9, "bias": 32.0,  "w5": 5,   "w10": 11},
+ACCURACY = {   # from bid_backtest_v7 (geo cascade county→pod→district→state), 620 projects
+  # mae/median/w5/w10 = all jobs; bias = statewide-fallback subset (localShare<50%) except ALT
+  # (n=7 too thin) which uses all-jobs bias. See HANDOFF 2026-08-26 Grok.
+  "PAVE":   {"n": 358, "mae": 8.9,  "median": 6.2,  "bias": -0.3,  "w5": 146, "w10": 247},
+  "ALT":    {"n": 79,  "mae": 8.8,  "median": 7.6,  "bias": -5.4,  "w5": 28,  "w10": 47},
+  "GD":     {"n": 119, "mae": 16.0, "median": 13.2, "bias": -12.6, "w5": 20,  "w10": 47},
+  "BRIDGE": {"n": 64,  "mae": 44.8, "median": 19.6, "bias": 21.3,  "w5": 8,   "w10": 18},
 }
 N_PROJECTS = 620
 
@@ -278,7 +280,7 @@ def parse_args(argv=None):
             "  EE_PRICES=state_avg_all.csv EE_BINDER=binder_prices.csv python3 compile_data.py\n"
             "\n"
             "Do not invent the tuning constants at the top of this file — they come from\n"
-            "Supabase project allen-qc, view bid_backtest_v6. Regenerating with the same\n"
+            "Supabase project allen-qc, view bid_backtest_v7. Regenerating with the same\n"
             "source CSVs must not change a number in data.json except meta.built.\n"
         ),
     )

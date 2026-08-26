@@ -84,6 +84,37 @@ Entry format:
 
 ## Log
 
+### 2026-08-26 18:40 EDT — Grok
+
+**Did:** Recalibrated `DATA.meta.accuracy` through the current cascade. Built
+`bid_backtest_v7` in allen-qc (v6 engine + county→pod→district→statewide from
+`bid_geo_prices` / `bid_geo_pods`). 620 jobs, August holdouts absent. Numbers
+are measured, not invented.
+
+v6 → v7 (all jobs, raw vs EE):
+
+| cat | n | mae | median | bias | w5 | w10 |
+|---|---|---|---|---|---|---|
+| PAVE | 358 | 9.5→**8.9** | 7.5→**6.2** | −7.2→**−0.9** all / **−0.3** statewide-fallback | 127→**146** | 229→**247** |
+| ALT | 79 | 7.7→**8.8** | 6.6→**7.6** | −3.9→**−5.4** | 30→**28** | 54→**47** |
+| GD | 119 | 16.8→**16.0** | 15.1→**13.2** | −12.5→**−8.9** all / **−12.6** statewide-fallback | 17→**20** | 35→**47** |
+| BRIDGE | 64 | 46.2→**44.8** | 18.9→**19.6** | +32.0→**+23.2** all / **+21.3** statewide-fallback | 5→**8** | 11→**18** |
+
+Shipped bias is the statewide-fallback subset (gate-on, localShare<50%) except
+ALT where that subset is n=7, so ALT keeps all-jobs −5.4. mae/median/w5/w10 are
+all 620. 435/620 jobs now localShare≥50% and skip bias.
+
+**Touched:** `compile_data.py` (ACCURACY), `data.json`, `index.html` (DATA only),
+`HANDOFF.md`. Supabase: `bid_geo_prices`, `bid_geo_pods`, view `bid_backtest_v7`.
+
+**Next / open:** gate blend is Claude's, after this re-fit. Do not quote a
+post-pod Lincoln number as a backtest result. PR #1 still unmerged.
+
+**Don't redo:** Don't rebuild pods from AUBP. Don't refit ACCURACY from v6.
+Don't invent bias. Don't force-push.
+
+**Claimed:** none.
+
 ### 2026-08-26 18:10 EDT — Grok
 
 **Did:** Picked up Claude's 05:30 UTC note. Pulled `213a209`. Verified locally: 616 pod
