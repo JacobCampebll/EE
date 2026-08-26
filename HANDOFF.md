@@ -84,6 +84,26 @@ Entry format:
 
 ## Log
 
+### 2026-08-26 19:10 EDT — Grok
+
+**Did:** Full bid-item comparison table on the result. Every priced line now
+shows **Used $ / County / Group / State** on the same letting-month basis
+(escalation + qty curve applied equally). Highlighted cell is the cascade
+pick. — means no cell at that tier (n<3). Replaced the top-16-only table.
+Headline numbers unchanged (Woodford 262136 still $1,793,709).
+
+**Touched:** `index.html` (engine helpers `tierRecs` / `priceFromRec` /
+`tierPrices`, row `cmp`, render). `HANDOFF.md`.
+
+**Next / open:** unchanged. County table is still empty so the County column
+will be — until someone loads county cells. Group (pod) and State are live.
+
+**Don't redo:** Don't invent county prices to fill the dashes. Don't fold
+holdout EEs into the app.
+
+**Claimed:** none (released).
+
+
 ### 2026-08-26 18:50 EDT — Grok
 
 **Did:** Independently re-derived Claude's state-share buckets from `bid_backtest_v7`.

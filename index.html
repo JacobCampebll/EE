@@ -12,7 +12,7 @@
     --accent-hover:#178f68;--accent-soft:#edf8f4;--radius:14px;}
   *{box-sizing:border-box;margin:0;padding:0}
   body{font-family:system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);
-       min-height:100vh;padding:32px 24px 48px;max-width:980px;margin:0 auto}
+       min-height:100vh;padding:32px 24px 48px;max-width:1180px;margin:0 auto}
   header{border-bottom:2px solid var(--line);padding-bottom:12px;margin-bottom:16px;
          display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px}
   h1{font-size:1.4rem;color:var(--accent);letter-spacing:-.3px}
@@ -74,6 +74,14 @@
   .src{font-size:.67rem;padding:2px 7px;border-radius:9px;background:var(--panel2);color:var(--muted);white-space:nowrap}
   .src.sa{color:var(--accent)} .src.old{color:var(--gold)} .src.none{color:var(--bad)} .src.ls{color:#93c5fd}
    .src.dist{color:#c4b5fd} .src.county{color:#f9a8d4} .src.pod{color:#67e8f9}
+  .cmpwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}
+  table.cmp{min-width:860px}
+  table.cmp th.num, table.cmp td.num{text-align:right;white-space:nowrap}
+  table.cmp td.hit{background:var(--accent-soft);font-weight:700}
+  table.cmp td.used{font-weight:700}
+  table.cmp .nsub{display:block;font-size:.62rem;color:var(--muted);font-weight:500;letter-spacing:0}
+  table.cmp .dash{color:var(--muted)}
+  table.cmp td.desc{min-width:148px;white-space:normal;line-height:1.3}
   .note{background:var(--panel2);border-left:3px solid var(--gold);padding:10px 13px;
         border-radius:0 8px 8px 0;font-size:.82rem;color:var(--muted);margin-top:11px;line-height:1.5}
   .note.bad{border-left-color:var(--bad)} .note.ok{border-left-color:var(--accent)}
@@ -212,30 +220,56 @@ function localPrice(code, county){
   if (dtab && dtab[code] && dtab[code].n >= minN) return { rec: dtab[code], scope: "district", label: "D"+dist };
   return null;
 }
-function unitPrice(code, qty, letKey, qtyForCurve, county){
+function tierRecs(code, county){
+  const geo = DATA.geo || {};
+  const minN = (DATA.rules && DATA.rules.geo_min_n) || 3;
+  const cName = normCounty(county);
+  const out = { county: null, pod: null, district: null, state: DATA.prices[code] || null };
+  const ctab = cName && geo.county && geo.county[cName];
+  if (ctab && ctab[code] && ctab[code].n >= minN) out.county = ctab[code];
+  const pod = podOf(cName);
+  const ptab = pod && geo.pod && geo.pod[pod];
+  if (ptab && ptab[code] && ptab[code].n >= minN) out.pod = ptab[code];
+  const dist = districtOf(cName);
+  const dtab = dist && geo.district && geo.district[dist];
+  if (dtab && dtab[code] && dtab[code].n >= minN) out.district = dtab[code];
+  return out;
+}
+// Escalate + qty-curve a raw {p,n,yr} record onto the letting month. Same formula
+// for every tier so Used / County / Group / State are comparable.
+function priceFromRec(code, qty, letKey, qtyForCurve, rec){
   const e = DATA.prices[code];
-  if (!e) return null;
-  const loc = localPrice(code, county);
-  const src = loc ? loc.rec : e;
+  if (!e || !rec || rec.p == null) return null;
   const letYear = parseInt(letKey.slice(0,4), 10);
   const kapiLet = kapiAt(letKey).v;
-  const fileYr = loc ? src.yr : e.yr;
+  const fileYr = rec.yr != null ? rec.yr : e.yr;
   const kapiFileYr = DATA.kapi_year[String(Math.min(fileYr, 2025))] || kapiLet;
-
   let p;
   if (e.ac){
-    // asphalt: strip binder at the file year's index, escalate the residual, re-add binder at letting KAPI
-    const resid = Math.max(0, src.p - e.ac * kapiFileYr);
+    const resid = Math.max(0, rec.p - e.ac * kapiFileYr);
     p = resid * escFactor(fileYr, letYear, DATA.escalation.asphalt_resid) + e.ac * kapiLet;
   } else {
-    p = src.p * escFactor(fileYr, letYear, DATA.escalation.other);
+    p = rec.p * escFactor(fileYr, letYear, DATA.escalation.other);
   }
-  // quantity curve: big jobs price lower per unit, small jobs higher
   const qc = (qtyForCurve != null ? qtyForCurve : qty);
   if (e.b && e.q && qc > 0){
     const m = Math.pow(qc / e.q, e.b);
     p *= Math.min(DATA.rules.qty_max, Math.max(DATA.rules.qty_min, m));
   }
+  return p;
+}
+function tierPrices(code, qty, letKey, qtyForCurve, county){
+  const tr = tierRecs(code, county);
+  const wrap = rec => rec ? { p: priceFromRec(code, qty, letKey, qtyForCurve, rec), n: rec.n, yr: rec.yr } : null;
+  return { county: wrap(tr.county), pod: wrap(tr.pod), district: wrap(tr.district), state: wrap(tr.state) };
+}
+function unitPrice(code, qty, letKey, qtyForCurve, county){
+  const e = DATA.prices[code];
+  if (!e) return null;
+  const loc = localPrice(code, county);
+  const src = loc ? loc.rec : e;
+  const p = priceFromRec(code, qty, letKey, qtyForCurve, src);
+  if (p == null) return null;
   const scope = loc ? loc.scope : (e.yr === 2025 ? "sa" : "old");
   return { price: p, occ: src.n, year: src.yr, desc: e.d, asphalt: !!e.ac, scaled: !!(e.b && e.q),
            scope, geo: loc ? loc.label : "state" };
@@ -262,16 +296,17 @@ function predict(items, letKey, cat, county){
     if (it.unit === "LS" && lr && lr[cat] != null){
       matched++;
       if (!lsCounted[code]){ lsCounted[code] = true; ratioPct += lr[cat];
-        rows.push({ code, desc, qty, unit: null, ext: null, src: "ls", pct: lr[cat] }); }
+        rows.push({ line: it.line, code, desc, qty, unitName: it.unit, unit: null, ext: null, src: "ls", pct: lr[cat] }); }
       continue;
     }
     const up = unitPrice(code, qty, letKey, qtyByCode[code], county);
-    if (!up){ unpriced.push({ code, desc, qty }); rows.push({ code, desc, qty, unit: 0, ext: 0, src: "none" }); continue; }
+    if (!up){ unpriced.push({ code, desc, qty }); rows.push({ line: it.line, code, desc, qty, unitName: it.unit, unit: 0, ext: 0, src: "none" }); continue; }
     matched++;
     const ext = qty * up.price;
     S += ext;
-    rows.push({ code, desc, qty, unit: up.price, ext, src: up.scope,
-                occ: up.occ, yr: up.year, scaled: up.scaled, geo: up.geo });
+    rows.push({ line: it.line, code, desc, qty, unitName: it.unit, unit: up.price, ext, src: up.scope,
+                occ: up.occ, yr: up.year, scaled: up.scaled, geo: up.geo,
+                cmp: tierPrices(code, qty, letKey, qtyByCode[code], county) });
   }
 
   const Sfull = S * (1 + ratioPct);
@@ -337,11 +372,26 @@ function render(r){
   const lo = r.total * (1 - b - bias), hi = r.total * (1 + b - bias);
   const locPct = ((r.localShare || 0) * 100).toFixed(0);
   const sc = r.srcCounts || {county:0,pod:0,district:0,state:0};
-  const top = r.rows.filter(x => x.ext != null).sort((a,c) => c.ext - a.ext).slice(0, 16);
   const calSign = r.acc.bias < 0 ? "+" : "\u2212";
   const calPct = Math.abs(r.acc.bias).toFixed(1);
   const w5 = r.acc.w5 != null ? Math.round(100 * r.acc.w5 / r.acc.n) : null;
   const w10 = Math.round(100 * r.acc.w10 / r.acc.n);
+
+  const priceCell = (row, tier, srcName) => {
+    if (!tier || tier.p == null) return `<td class="num dash">—</td>`;
+    const hit = (srcName === "county" && row.src === "county")
+      || (srcName === "pod" && row.src === "pod")
+      || (srcName === "state" && (row.src === "sa" || row.src === "old"));
+    return `<td class="num${hit?" hit":""}">${fmt2(tier.p)}${tier.n!=null?`<span class="nsub">n=${tier.n}</span>`:""}</td>`;
+  };
+  const basisChip = t => {
+    if (t.src === "ls") return `<span class="src ls">${(t.pct*100).toFixed(2)}% of S</span>`;
+    if (t.src === "none") return `<span class="src none">no data</span>`;
+    if (t.src === "county" || t.src === "pod" || t.src === "district")
+      return `<span class="src ${t.src==="district"?"dist":t.src}">${t.geo}${t.scaled?" · qty-adj":""}</span>`;
+    return `<span class="src ${t.src}">state${t.scaled?" · qty-adj":""}</span>`;
+  };
+  const podLabel = ((DATA.geo && DATA.geo.pods && DATA.geo.pods[podOf(r.county)]) || {}).label || "Group";
 
   const wedge = !r.biasApplied ? `
     <div class="note ok"><b>Headline is raw — local prices dominate.</b>
@@ -403,20 +453,38 @@ function render(r){
     </div>
   </div>
   <div class="panel">
-    <h2>Top items by predicted value</h2>
-    <table><thead><tr><th>Code</th><th class="hidesm">Description</th><th class="num">Qty</th>
-      <th class="num">Unit $</th><th class="num">Extended</th><th>Basis</th></tr></thead><tbody>
-      ${top.map(t => `<tr><td>${t.code}</td><td class="hidesm">${t.desc||""}</td>
-        <td class="num">${t.qty.toLocaleString()}</td>
-        <td class="num">${t.src==="ls" ? "—" : fmt2(t.unit)}</td>
-        <td class="num">${fmt(t.ext)}</td>
-        <td><span class="src ${t.src}">${
-          t.src === "ls"   ? (t.pct*100).toFixed(2)+"% of S" :
-          t.src === "none" ? "no data" :
-          t.src === "county" || t.src === "pod" || t.src === "district"
-            ? t.geo+" "+t.yr+" · n="+t.occ+(t.scaled?" · qty-adj":"") :
-          "state "+t.yr+" · n="+t.occ+(t.scaled?" · qty-adj":"")}</span></td></tr>`).join("")}
+    <h2>All bid items — used vs county / group / state</h2>
+    <div class="range" style="margin-bottom:10px">Every unit price is escalated to ${r.letKey} the same way.
+      Highlighted cell is the cascade pick. — means no table cell at that tier (n<3).
+      Group is the ${podLabel} market. Quantity curves apply equally across columns.</div>
+    <div class="cmpwrap">
+    <table class="cmp"><thead><tr>
+      <th>Line</th><th>Code</th><th class="hidesm desc">Description</th>
+      <th class="num">Qty</th>
+      <th class="num">Used $</th>
+      <th class="num">County</th>
+      <th class="num">Group</th>
+      <th class="num">State</th>
+      <th class="num">Extended</th>
+      <th>Basis</th>
+    </tr></thead><tbody>
+      ${r.rows.map(t => {
+        const cmp = t.cmp || {};
+        return `<tr>
+          <td>${t.line || ""}</td>
+          <td>${t.code}</td>
+          <td class="hidesm desc">${t.desc||""}</td>
+          <td class="num">${t.qty.toLocaleString()}${t.unitName ? `<span class="nsub">${t.unitName}</span>` : ""}</td>
+          <td class="num used">${t.src==="ls" || t.src==="none" || t.unit==null ? "—" : fmt2(t.unit)}</td>
+          ${priceCell(t, cmp.county, "county")}
+          ${priceCell(t, cmp.pod, "pod")}
+          ${priceCell(t, cmp.state, "state")}
+          <td class="num">${t.ext != null ? fmt(t.ext) : "—"}</td>
+          <td>${basisChip(t)}</td>
+        </tr>`;
+      }).join("")}
     </tbody></table>
+    </div>
   </div>`;
   document.getElementById("result").classList.remove("hide");
   document.getElementById("result").scrollIntoView({behavior:"smooth",block:"start"});
