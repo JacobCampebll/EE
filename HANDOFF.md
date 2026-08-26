@@ -84,6 +84,54 @@ Entry format:
 
 ## Log
 
+### 2026-08-26 22:40 UTC (18:40 EDT) — Claude (Opus 5)
+
+**Did:** Independently verified Grok's v7 recalibration, then investigated the gate blend Grok
+handed back to me. **Recommending we drop the blend.** Reasoning below — Grok, push back if you
+read the numbers differently.
+
+**Verification of `38b553f` — passes.** I re-derived all sixteen figures straight from
+`bid_backtest_v7` rather than trusting the entry. Every one matches: PAVE 8.9 / 6.2 / −0.3 /
+146 / 247, ALT 8.8 / 7.6 / −5.4 / 28 / 47, GD 16.0 / 13.2 / −12.6 / 20 / 47, BRIDGE 44.8 / 19.6 /
+21.3 / 8 / 18. 620 jobs, 435 at localShare ≥ 0.5, and **zero** of the three August holdout
+contracts present. Taking bias from the statewide-fallback subset is the right call — that is
+exactly the population the gate applies it to, so it is the correct conditional estimate.
+
+**The blend is not supported by the data.** The proposal was to replace the hard cliff at
+localShare 0.5 with something continuous, on the premise that more statewide pricing means more
+bias. I bucketed bias against state share in v7 to check that premise:
+
+| state share | PAVE | GD | BRIDGE |
+|---|---|---|---|
+| 0.00–0.20 | +0.7 (n=250) | −5.2 (n=16) | — |
+| 0.21–0.40 | −5.3 (n=58) | +3.2 (n=16) | +35.4 (n=7) |
+| 0.41–0.60 | −7.4 (n=20) | +1.6 (n=6) | +29.4 (n=3) |
+| 0.61–0.80 | −3.4 (n=13) | −16.1 (n=32) | +34.4 (n=14) |
+| 0.81–1.00 | **0.0** (n=17) | −10.6 (n=49) | **+16.6** (n=40) |
+
+PAVE is non-monotonic and ends at zero. GD swings sign twice. BRIDGE bias *falls* as state share
+rises — the opposite of the premise. There is no monotone relationship to interpolate along. A
+linear blend would be a smooth curve through noise: it would look more sophisticated than the
+step function while being less honest, and it would change every estimate to do it. The cliff at
+least corresponds to a real, documented rule.
+
+**What the buckets do say:** PAVE is close to finished — bias −0.3 on the fallback subset,
++0.7 where local prices dominate, 247/358 within ±10%. The remaining error is **GD (16.0 mae)
+and BRIDGE (44.8)**, neither of which geo pricing moved much. Bridges are structural — lump-sum
+items with no quantity to scale by, already documented. GD is the open question worth a look.
+
+**Touched:** `HANDOFF.md` only. No code, no data.
+
+**Next / open:** unchanged and both Jacob's: merge PR #1 then flip the default branch, and decide
+on the read-only `v_pod_prices` view. `engineer_unit_price` (574 of 21,717 lines) remains the
+real path to ±2% — it is what KYTC's estimators actually used, and we are predicting them, not
+the contractors.
+
+**Don't redo:** Don't build the gate blend without new evidence that bias varies monotonically
+with state share — as of v7 it does not. Don't refit ACCURACY from v6.
+
+**Claimed:** none.
+
 ### 2026-08-26 18:40 EDT — Grok
 
 **Did:** Recalibrated `DATA.meta.accuracy` through the current cascade. Built
