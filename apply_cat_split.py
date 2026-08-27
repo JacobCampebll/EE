@@ -15,21 +15,6 @@ ACC = {
   "RECON":  {"n": 64,  "mae": 44.8, "median": 19.6, "bias": 21.3,  "w5": 8,   "w10": 18},
 }
 
-OPTIONS_OLD = (
-    '        <option value="PAVE">Resurfacing / paving</option>\n'
-    '        <option value="GD">Grade & drain / new route</option>\n'
-    '        <option value="ALT">Alternates (micro vs thinlay)</option>\n'
-    '        <option value="BRIDGE">Bridge</option>'
-)
-OPTIONS_NEW = (
-    '        <option value="PAVE">Resurfacing / paving</option>\n'
-    '        <option value="GD">Grade & drain / new route</option>\n'
-    '        <option value="SMALL">Guardrail / signing</option>\n'
-    '        <option value="RECON">Reconstruction w/ structures</option>\n'
-    '        <option value="ALT">Alternates (micro vs thinlay)</option>\n'
-    '        <option value="BRIDGE">Bridge</option>'
-)
-
 def must_replace(s, old, new, label):
     if old not in s:
         if new in s:
@@ -38,71 +23,63 @@ def must_replace(s, old, new, label):
         raise SystemExit("refusing: missing snippet " + label)
     return s.replace(old, new, 1)
 
+def splice_dropdown(html):
+    if 'value="SMALL"' in html:
+        print("ok already: dropdown")
+        return html
+    needle = '<option value="ALT">Alternates (micro vs thinlay)</option>'
+    insert = (
+        '<option value="SMALL">Guardrail / signing</option>\n'
+        '        <option value="RECON">Reconstruction w/ structures</option>\n'
+        '        <option value="ALT">Alternates (micro vs thinlay)</option>'
+    )
+    return must_replace(html, needle, insert, "dropdown")
+
 def main():
     html = open(INDEX).read()
-    if 'value="SMALL"' in html and "rail + sign" in html:
-        print("index.html already split")
-    else:
-        html = must_replace(html, OPTIONS_OLD, OPTIONS_NEW, "dropdown")
-        html = must_replace(
-            html,
-            '  const acc = DATA.meta.accuracy[cat] || DATA.meta.accuracy.GD;',
-            '  const acc = DATA.meta.accuracy[cat] || (cat === "RECON" ? DATA.meta.accuracy.BRIDGE : DATA.meta.accuracy.GD);',
-            "acc lookup",
-        )
-        html = must_replace(
-            html,
-            '    const lr = DATA.ls_ratios[code];\n    if (it.unit === "LS" && lr && lr[cat] != null){\n      matched++;\n      if (!lsCounted[code]){ lsCounted[code] = true; ratioPct += lr[cat];\n        rows.push({ line: it.line, code, desc, qty, unitName: it.unit, unit: null, ext: null, src: "ls", pct: lr[cat] }); }',
-            '    const lr = DATA.ls_ratios[code];\n    const lsKey = (cat === "RECON") ? "BRIDGE" : cat;\n    if (it.unit === "LS" && lr && lr[lsKey] != null){\n      matched++;\n      if (!lsCounted[code]){ lsCounted[code] = true; ratioPct += lr[lsKey];\n        rows.push({ line: it.line, code, desc, qty, unitName: it.unit, unit: null, ext: null, src: "ls", pct: lr[lsKey] }); }',
-            "ls key",
-        )
-        html = must_replace(
-            html,
-            '  if (cat === "BRIDGE") return ["c-low","LOW"];',
-            '  if (cat === "BRIDGE" || cat === "RECON") return ["c-low","LOW"];',
-            "confOf",
-        )
-        old_sug = (
-            'function suggestCat(items){\n'
-            '  let asph = 0, earth = 0, br = 0, alt = 0;\n'
-            '  for (const it of items){\n'
-            '    const d = (it.desc || "").toUpperCase();\n'
-            '    const c = it.code || "";\n'
-            '    if (/ALTERNATE|MICROSURFACING|THINLAY/.test(d)) alt++;\n'
-            '    if (/ASPH|PAVE MILLING|DGA BASE|LEVELING & WEDGING/.test(d)) asph += it.qty || 0;\n'
-            '    if (/EXCAVAT|EMBANKMENT|BORROW EXCAVATION/.test(d) || c === "02200" || c === "02230") earth += it.qty || 0;\n'
-            '    if (/^08/.test(c) || /BRIDGE|STRUCTURAL STEEL|REMOVE EXISTING DECK|GIRDER|ELASTOMERIC/.test(d)) br++;\n'
-            '  }\n'
-            '  if (alt >= 3) return { cat: "ALT", why: "item text looks like micro/thinlay alternates" };\n'
-            '  if (br >= 6 && asph < 200) return { cat: "BRIDGE", why: "many structure / bridge bid codes" };\n'
-            '  if (earth > 3000 && earth >= asph) return { cat: "GD", why: "earthwork quantities dominate" };\n'
-            '  return { cat: "PAVE", why: "asphalt / resurfacing items dominate" };\n'
-            '}'
-        )
-        new_sug = (
-            'function suggestCat(items){\n'
-            '  let asph = 0, earth = 0, br = 0, alt = 0, rail = 0, sign = 0;\n'
-            '  for (const it of items){\n'
-            '    const d = (it.desc || "").toUpperCase();\n'
-            '    const c = it.code || "";\n'
-            '    if (/ALTERNATE|MICROSURFACING|THINLAY/.test(d)) alt++;\n'
-            '    if (/ASPH|PAVE MILLING|DGA BASE|LEVELING & WEDGING/.test(d)) asph += it.qty || 0;\n'
-            '    if (/EXCAVAT|EMBANKMENT|BORROW EXCAVATION/.test(d) || c === "02200" || c === "02230") earth += it.qty || 0;\n'
-            '    if (/^08/.test(c) || /BRIDGE|STRUCTURAL STEEL|REMOVE EXISTING DECK|GIRDER|ELASTOMERIC/.test(d)) br++;\n'
-            '    if (/^023(51|53|60|63|65|67|69|71|73|75|81|83|87|91|92|93)/.test(c) || /GUARDRAIL/.test(d)) rail++;\n'
-            '    if (/^064/.test(c) || /SHEET SIGN|SIGN POST|DELINEATOR|MILE POST/.test(d)) sign++;\n'
-            '  }\n'
-            '  if (alt >= 3) return { cat: "ALT", why: "item text looks like micro/thinlay alternates" };\n'
-            '  if ((rail + sign) >= 6 && earth < 1000 && br < 6) return { cat: "SMALL", why: "guardrail / signing package" };\n'
-            '  if (br >= 6 && earth > 3000) return { cat: "RECON", why: "structures plus earthwork \u2014 uses bridge calibration" };\n'
-            '  if (br >= 6 && asph < 200) return { cat: "BRIDGE", why: "many structure / bridge bid codes" };\n'
-            '  if (earth > 3000 && earth >= asph) return { cat: "GD", why: "earthwork quantities dominate" };\n'
-            '  return { cat: "PAVE", why: "asphalt / resurfacing items dominate" };\n'
-            '}'
-        )
-        html = must_replace(html, old_sug, new_sug, "suggestCat")
-        open(INDEX, "w").write(html)
-        print("wrote index.html engine/UI")
+    html = splice_dropdown(html)
+    html = must_replace(
+        html,
+        '  const acc = DATA.meta.accuracy[cat] || DATA.meta.accuracy.GD;',
+        '  const acc = DATA.meta.accuracy[cat] || (cat === "RECON" ? DATA.meta.accuracy.BRIDGE : DATA.meta.accuracy.GD);',
+        "acc lookup",
+    )
+    html = must_replace(
+        html,
+        '    const lr = DATA.ls_ratios[code];\n    if (it.unit === "LS" && lr && lr[cat] != null){\n      matched++;\n      if (!lsCounted[code]){ lsCounted[code] = true; ratioPct += lr[cat];\n        rows.push({ line: it.line, code, desc, qty, unitName: it.unit, unit: null, ext: null, src: "ls", pct: lr[cat] }); }',
+        '    const lr = DATA.ls_ratios[code];\n    const lsKey = (cat === "RECON") ? "BRIDGE" : cat;\n    if (it.unit === "LS" && lr && lr[lsKey] != null){\n      matched++;\n      if (!lsCounted[code]){ lsCounted[code] = true; ratioPct += lr[lsKey];\n        rows.push({ line: it.line, code, desc, qty, unitName: it.unit, unit: null, ext: null, src: "ls", pct: lr[lsKey] }); }',
+        "ls key",
+    )
+    html = must_replace(
+        html,
+        '  if (cat === "BRIDGE") return ["c-low","LOW"];',
+        '  if (cat === "BRIDGE" || cat === "RECON") return ["c-low","LOW"];',
+        "confOf",
+    )
+    old_sug = '  let asph = 0, earth = 0, br = 0, alt = 0;'
+    new_sug = '  let asph = 0, earth = 0, br = 0, alt = 0, rail = 0, sign = 0;'
+    html = must_replace(html, old_sug, new_sug, "suggest locals")
+    old_loop_end = '    if (/^08/.test(c) || /BRIDGE|STRUCTURAL STEEL|REMOVE EXISTING DECK|GIRDER|ELASTOMERIC/.test(d)) br++;\n  }'
+    new_loop_end = (
+        '    if (/^08/.test(c) || /BRIDGE|STRUCTURAL STEEL|REMOVE EXISTING DECK|GIRDER|ELASTOMERIC/.test(d)) br++;\n'
+        '    if (/^023(51|53|60|63|65|67|69|71|73|75|81|83|87|91|92|93)/.test(c) || /GUARDRAIL/.test(d)) rail++;\n'
+        '    if (/^064/.test(c) || /SHEET SIGN|SIGN POST|DELINEATOR|MILE POST/.test(d)) sign++;\n'
+        '  }'
+    )
+    html = must_replace(html, old_loop_end, new_loop_end, "suggest counts")
+    old_dec = (
+        '  if (alt >= 3) return { cat: "ALT", why: "item text looks like micro/thinlay alternates" };\n'
+        '  if (br >= 6 && asph < 200) return { cat: "BRIDGE", why: "many structure / bridge bid codes" };'
+    )
+    new_dec = (
+        '  if (alt >= 3) return { cat: "ALT", why: "item text looks like micro/thinlay alternates" };\n'
+        '  if ((rail + sign) >= 6 && earth < 1000 && br < 6) return { cat: "SMALL", why: "guardrail / signing package" };\n'
+        '  if (br >= 6 && earth > 3000) return { cat: "RECON", why: "structures plus earthwork \u2014 uses bridge calibration" };\n'
+        '  if (br >= 6 && asph < 200) return { cat: "BRIDGE", why: "many structure / bridge bid codes" };'
+    )
+    html = must_replace(html, old_dec, new_dec, "suggest decisions")
+    open(INDEX, "w").write(html)
+    print("wrote index.html engine/UI")
 
     data = json.load(open(DATA))
     data["meta"]["accuracy"] = ACC
@@ -136,7 +113,7 @@ def main():
         if "BRIDGE" in rec:
             rec.setdefault("RECON", rec["BRIDGE"])
     open(INDEX, "w").write(html[:i] + json.dumps(inline, separators=(",", ":")) + html[end:])
-    print("accuracy", ACC["GD"]["bias"], ACC["SMALL"]["bias"])
+    print("accuracy GD", ACC["GD"]["bias"], "SMALL", ACC["SMALL"]["bias"])
     print("done")
 
 if __name__ == "__main__":
