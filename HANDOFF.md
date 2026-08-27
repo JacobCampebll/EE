@@ -84,6 +84,59 @@ Entry format:
 
 ## Log
 
+### 2026-08-27 — Claude (Opus 5) — Confidence accordion applied; fixed two bugs in Grok's script first
+
+**Did:** Jacob picked accordion layout #4. Grok flagged that the branch copy of
+`apply_conf_accordion.py` might have backslash-quote escaping. It did — and a second bug too, so
+I did not run it as written.
+
+**Bug 1 (the one Grok warned about).** `OLD_PANEL` was a normal `"""` string, so its `\"`
+collapsed to `"` and matched the file. `NEW_PANEL` was `r"""` — **raw** — so its `\"` would
+have survived into the page as `class=\"panel\"`. That renders the whole Confidence card as
+broken markup.
+
+**Bug 2 (nobody had spotted this one).** `OLD_PANEL` carried `Fuel & Asphalt`; `index.html` has
+`Fuel &amp; Asphalt`. `must_replace` would have found 0 occurrences and aborted. That is a
+*fail-safe* abort — the CSS substitution happens in memory and the single write is at the end —
+so the script could never have half-written the file. Worth saying plainly, because the two
+placeholder incidents make every failed script look like the same class of problem, and this one
+was not.
+
+**Rebuilt** both literals as plain `'''` strings holding the HTML verbatim — no backslash escapes
+anywhere, so the raw/non-raw distinction can no longer bite. Added a pre-write guard that aborts
+if either literal contains a backslash-quote, and a docstring note saying why. Also split
+`.acc>summary::-webkit-details-marker,.acc>summary::marker{display:none}` into two rules: an
+unrecognised selector invalidates the *entire* selector list, so Firefox — which has no
+`::-webkit-details-marker` — was dropping the standard `::marker` half along with it, and the
+disclosure triangle would have shown through the custom chevron. `::marker` also wants
+`content:""`, not `display:none`.
+
+**What shipped** (Grok's spec, unchanged): four rows visible without opening anything — items
+priced + meter, local share + bias applied/skipped, the existing `confOf` badge, mean error on
+the category with job count — then two `<details>`: *Track record details* (median, ±5/±10,
+measured bias, source mix) and *Job inputs* (county · district, letting month, KAPI + the
+carried-forward note).
+
+**Verified before pushing:** both needles matched exactly once; re-run prints `already applied`
+(idempotent); diff confined to the CSS block and the Confidence panel, 55 lines; `data.json`
+md5 unchanged; inlined `DATA` still matches `data.json` (2,136 prices, 616 pod cells); both
+`<script>` blocks pass `node --check`; `predict`, `unitPrice`, `localPrice`, `podOf`,
+`districtOf`, `normCounty`, `confOf`, `parseBidItems`, `pdfToLines`, `suggestCat` and the `DATA`
+literal all **byte-identical** to before the run. All three suites exit 0.
+
+I also rendered the new panel with a stub result object and walked the output: tags balance, two
+`<details>`/two `<summary>`, badge resolves to `HIGH`, no `undefined` leaked into the markup, no
+backslash-quotes. The one `\"` remaining in `index.html` is on line 171 inside the `DATA` JSON
+and predates this change.
+
+**Touched:** `index.html` (CSS block + Confidence detail panel only), `apply_conf_accordion.py`,
+`HANDOFF.md`. No claim on anything else.
+
+**Don't redo:** Don't re-run `apply_conf_accordion.py` expecting a change — it is idempotent and
+now prints `already applied`. Don't reintroduce `r'''`/`r"""` on either literal, and don't
+"tidy" the HTML by adding backslash escapes; both break it in opposite directions. Don't merge
+`&`/`&amp;` by hand — copy needles out of `index.html` verbatim.
+
 ### 2026-08-27 — Claude (Opus 5) — PR #1 merged, `main` is now the default branch
 
 **Did:** Jacob asked me to merge, so I did — I had been holding off because I don't merge on my
