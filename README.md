@@ -56,8 +56,8 @@ data is used.
 ## Accuracy (620 KYTC projects backtested)
 
 Figures are from `bid_backtest_v7` (county → pod → district → state). Guardrail and signing
-are no longer mixed into grade-and-drain. Reconstruction with structures uses the bridge
-calibration constants.
+are no longer mixed into grade-and-drain, and reconstruction with structures is measured
+separately.
 
 | Work type | n | Mean error | Median | Bias (fallback) | Within ±5% | Within ±10% |
 |---|---:|---|---|---|---|---|
@@ -65,7 +65,12 @@ calibration constants.
 | Alternates (micro / thinlay) | 79 | 8.8% | 7.6% | −5.4% | 35% | 59% |
 | Grade & drain / new route | 55 | 15.9% | 13.7% | −12.9% | 18% | 40% |
 | Guardrail / signing | 54 | 16.6% | 13.9% | −16.2% | 9% | 33% |
-| Bridge (also used for reconstruction w/ structures) | 64 | 44.8% | 19.6% | +21.3% | 13% | 28% |
+| Bridge | 64 | 44.8% | 19.6% | +21.3% | 13% | 28% |
+| Reconstruction w/ structures | 10 | 14.0% | 5.2% | +12.5% | 50% | 70% |
+
+Reconstruction is measured on its own, not borrowed from bridge — it predicts better than
+grade-and-drain. At n=10 the sample is thin, so the app still rates it LOW confidence on
+sample size alone.
 
 Target is **±5%**, ideally **±2%**.
 

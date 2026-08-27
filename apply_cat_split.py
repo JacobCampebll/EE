@@ -12,7 +12,12 @@ ACC = {
   "GD":     {"n": 55,  "mae": 15.9, "median": 13.7, "bias": -12.9, "w5": 10,  "w10": 22},
   "SMALL":  {"n": 54,  "mae": 16.6, "median": 13.9, "bias": -16.2, "w5": 5,   "w10": 18},
   "BRIDGE": {"n": 64,  "mae": 44.8, "median": 19.6, "bias": 21.3,  "w5": 8,   "w10": 18},
-  "RECON":  {"n": 64,  "mae": 44.8, "median": 19.6, "bias": 21.3,  "w5": 8,   "w10": 18},
+  # RECON measured from bid_backtest_v7 (work_type = RECONSTRUCTION / GRADE-DRAIN-SURFACE
+  # W/ STRUCTURES), not copied from BRIDGE. n=10 is thin, so confOf still rates it LOW on
+  # sample size -- but the band and bias must be its own. Reconstruction predicts BETTER
+  # than grade-and-drain (mae 14.0 vs 15.9, median 5.2), so shipping bridge's 44.8 / +21.3
+  # would have over-corrected these jobs down ~9 points and mislabelled the range.
+  "RECON":  {"n": 10,  "mae": 14.0, "median": 5.2,  "bias": 12.5,  "w5": 5,   "w10": 7},
 }
 
 def must_replace(s, old, new, label):
@@ -74,7 +79,7 @@ def main():
     new_dec = (
         '  if (alt >= 3) return { cat: "ALT", why: "item text looks like micro/thinlay alternates" };\n'
         '  if ((rail + sign) >= 6 && earth < 1000 && br < 6) return { cat: "SMALL", why: "guardrail / signing package" };\n'
-        '  if (br >= 6 && earth > 3000) return { cat: "RECON", why: "structures plus earthwork \u2014 uses bridge calibration" };\n'
+        '  if (br >= 6 && earth > 3000) return { cat: "RECON", why: "structures plus earthwork \u2014 own calibration, n=10" };\n'
         '  if (br >= 6 && asph < 200) return { cat: "BRIDGE", why: "many structure / bridge bid codes" };'
     )
     html = must_replace(html, old_dec, new_dec, "suggest decisions")
