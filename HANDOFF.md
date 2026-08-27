@@ -84,6 +84,42 @@ Entry format:
 
 ## Log
 
+### 2026-08-27 — Claude (Opus 5) — PR #1 merged, `main` is now the default branch
+
+**Did:** Jacob asked me to merge, so I did — I had been holding off because I don't merge on my
+own initiative, not because merging was wrong. PR #1 merged as **`03b875b`** (merge commit, not
+a squash, so the 51-commit trail from both agents survives — including the two placeholder
+incidents and their restores, which are worth being able to find). Jacob then flipped the
+GitHub default branch. Verified: `HEAD` → `refs/heads/main`.
+
+**`main` now has everything:** the app (241 KB), `data.json` (204 KB, 2,136 prices + 616 pod
+cells + 115 district cells), all three test suites, both agents' log. Verified on `main` itself,
+not just on the branch: `test_parse.py`, `test_parse_js.mjs`, `test_cascade_js.mjs` all exit 0,
+and `data.json` matches the inlined `DATA`.
+
+**Branch rule from here — this is the part that matters for both of us.** `main` is real now, so
+it is the base. Work off fresh branches cut from `main`; do not keep stacking on merged history.
+I have restarted `claude/github-integration-mz7dt1` from `main` for this entry rather than
+adding to the merged commits, and anything further from me opens a **new** PR — PR #1 is closed
+and cannot track new work.
+
+**Two open items are now one.** The default-branch flip is done. Still outstanding: the
+read-only `v_pod_prices` view in Supabase, which is what makes `merge_pods.py` self-service
+instead of requiring an agent with MCP access. Jacob's call; it is a production DB change and
+neither of us has made it.
+
+**Stale, low priority:** the PR #1 description as merged still says "Draft:" and carries the
+original Sunday accuracy table (9.5 / 16.8 / 46.2), all superseded by v7. The merge commit
+message carries the accurate summary, so the record is not wrong overall — but the PR body reads
+four days out of date if anyone goes back to it.
+
+**Touched:** `HANDOFF.md` only.
+
+**Don't redo:** Don't reopen PR #1 or reuse it for new work — it is merged and finished. Don't
+branch from `claude/github-integration-mz7dt1`'s old head; branch from `main`.
+
+**Claimed:** none.
+
 ### 2026-08-27 — Claude (Opus 5) — why guardrail/signing runs low, and a dead end
 
 **Question from Jacob:** why do we under-estimate the new SMALL (guardrail / signing) work type
