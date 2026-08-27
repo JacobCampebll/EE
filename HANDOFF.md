@@ -84,6 +84,73 @@ Entry format:
 
 ## Log
 
+### 2026-08-27 — Claude (Opus 5) — why guardrail/signing runs low, and a dead end
+
+**Question from Jacob:** why do we under-estimate the new SMALL (guardrail / signing) work type
+by 16%? Investigation only — no code or data changed.
+
+**It is not an under-estimate. We are predicting a different number than the one being asked
+for.** The engine prices every line from *contractor bid* data (AUBP averages, and now the
+pod/district low-bid medians). So it predicts approximately **what a job will be bid at**. The
+target is KYTC's **Engineer's Estimate**. Those two differ, and the difference is the whole bias:
+
+| Work type | low bid vs EE | our bias | unexplained |
+|---|---|---|---|
+| PAVE | −0.5% | −0.9% | **−0.4%** |
+| GD | −4.2% | −5.3% | −1.2% |
+| ALT | −3.7% | −5.4% | −1.8% |
+| **SMALL** | **−16.3%** | **−15.6%** | **+0.7%** |
+| RECON | −9.0% | +8.1% | +17.2% |
+| BRIDGE | −20.6% | +23.2% | +43.8% |
+
+For SMALL there is **nothing left over** — 0.7%. The engine is doing what it was built to do;
+guardrail/signing simply bids about 16% under the state's estimate as a category. 51 of the 54
+jobs are under-predicted, worst −43.5%, best over only +10.9%, so it is one-directional rather
+than scatter.
+
+**This table also separates two problems that were being lumped together.** SMALL is a
+bid-vs-EE gap and is fully accounted for. BRIDGE (43.8% unexplained) and RECON (17.2%) are
+*not* — that residual is the lump-sum pricing defect, already documented as structural. Guardrail
+and bridges are different failures and want different fixes.
+
+**Dead end, recorded so nobody rebuilds it:** across work types, bid/EE tracks bidder count
+almost linearly — 1 bidder 100.4% of EE (n=378), 2 → 93.2%, 3 → 84.4%, 4 → 76.4%, 5 → 76.0%.
+That looks like competition causes the gap, and suggests scaling the prediction by expected
+bidder count. **It does not survive contact with the data.** Within SMALL, where you would
+actually apply it, bias by bidder count is flat and drifts the wrong way:
+
+| bidders | n | bias |
+|---|---|---|
+| 1 | 16 | −17.4% |
+| 2 | 24 | −15.0% |
+| 3 | 12 | −14.9% |
+| 4 | 2 | −14.2% |
+
+The cross-work-type correlation was confounded with work type itself — bridges draw 4 bidders
+*and* bid low, paving draws 1 *and* bids at EE. I asserted competition as the mechanism before
+running this check and was wrong; the honest position is that we know the *size* of the
+bid-vs-EE gap per work type but not its cause. Two independent reasons not to build it: bidder
+count is unknowable before the letting, and even with perfect foreknowledge it buys ~3 points of
+spread against a −16% bias.
+
+**Consequence: the shipped −16.2% SMALL constant is already the right instrument.** Work type
+captures the entire effect; there is nothing finer in this data to condition on. Do not
+"improve" it with a competition term.
+
+**Why this sharpens the `engineer_unit_price` case.** That column holds KYTC's own estimator
+unit prices — the actual target — and is populated on **574 of 21,717** lines. Pricing from it
+would dissolve this whole class of bias rather than correcting for it after the fact, for
+guardrail and for anything else where bids diverge from the estimate. Backfilling it from bid
+tabs is a data-entry job, not a modelling one. This is the single highest-value open item.
+
+**Touched:** `HANDOFF.md` only. No code, no data, nothing claimed.
+
+**Don't redo:** Don't build a bidder-count or competition adjustment — tested, flat within work
+type. Don't "fix" the SMALL bias as if it were a pricing defect; it is a bid-vs-EE gap. Don't
+read the BRIDGE/RECON residual as the same phenomenon — it is not.
+
+**Claimed:** none.
+
 ### 2026-08-27 02:15 UTC (22:15 EDT) — Claude (Opus 5)
 
 **Did:** Ran `apply_cat_split.py` and pushed `index.html` + `data.json`, which Grok cannot do
