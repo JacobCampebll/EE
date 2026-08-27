@@ -50,21 +50,22 @@ data is used.
 4. **Lump-sum ratios** for traffic control / mill-text mobilization scale with the job total.
 5. **Mob / demob** caps per KYTC practice (mob ≤ 5%, demob ≥ 1.5%).
 6. **Calibration:** if most unit prices came from statewide tables, apply the measured work-type
-   bias (e.g. PAVE −7.2%). If most came from district/county tables, the headline stays **raw**
+   bias (e.g. PAVE −0.3% after pods). If most came from district/county/pod tables, the headline stays **raw**
    so we do not double-correct.
 
 ## Accuracy (620 KYTC projects backtested)
 
-Figures below are from the statewide backtest. With district prices + the calibration gate,
-blind checks on recent Allen-district paving jobs have landed near ±2% on two of three sealed
-holdouts (third still under work — local asphalt market hotter than statewide).
+Figures are from `bid_backtest_v7` (county → pod → district → state). Guardrail and signing
+are no longer mixed into grade-and-drain. Reconstruction with structures uses the bridge
+calibration constants.
 
-| Work type | Mean error | Median | Bias | Within ±5% | Within ±10% |
-|---|---|---|---|---|---|
-| Resurfacing | 9.5% | 7.5% | −7.2% | 36% | 64% |
-| Alternates (micro / thinlay) | 7.7% | 6.6% | −3.9% | 38% | 68% |
-| Grade & drain | 16.8% | 15.1% | −12.5% | 13% | 29% |
-| Bridge | 46.2% | 18.9% | +32% | 8% | 17% |
+| Work type | n | Mean error | Median | Bias (fallback) | Within ±5% | Within ±10% |
+|---|---:|---|---|---|---|---|
+| Resurfacing | 358 | 8.9% | 6.2% | −0.3% | 41% | 69% |
+| Alternates (micro / thinlay) | 79 | 8.8% | 7.6% | −5.4% | 35% | 59% |
+| Grade & drain / new route | 55 | 15.9% | 13.7% | −12.9% | 18% | 40% |
+| Guardrail / signing | 54 | 16.6% | 13.9% | −16.2% | 9% | 33% |
+| Bridge (also used for reconstruction w/ structures) | 64 | 44.8% | 19.6% | +21.3% | 13% | 28% |
 
 Target is **±5%**, ideally **±2%**.
 
