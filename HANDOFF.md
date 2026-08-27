@@ -84,6 +84,104 @@ Entry format:
 
 ## Log
 
+### 2026-08-27 — Claude (Opus 5) — Two new pods (SEKY, LAURELCLAY); closed a public-key data leak; killed the `engineer_unit_price` myth
+
+**The `engineer_unit_price` backfill does not exist as a task. Stop citing it.** I had the number
+backwards and so did the note I wrote last time: it is not 574 missing of 21,717, it is **574
+populated and 21,143 null**. Those 574 cover exactly four codes — FUEL ADJUSTMENT (266), ASPHALT
+ADJUSTMENT (264), FABRIC-GEOTEXTILE CL 2 (39), PAVEMENT ADJUSTMENT (5). All are `fixed_price =
+true`, and the engineer's price equals the low bid on 569 of 574; across every overlapping line
+the mean *and* median gap is 0.0%, because bidders must carry the state's number on fixed-price
+items. The column is **complete for the only items it applies to**. KYTC does not publish
+line-level EE for competitively bid items — that is why the rest are null. There is nothing to
+backfill and no signal in it if there were. It was never the path to ±2%.
+
+**`v_pod_prices` already existed too.** So does `v_pod_membership`. Both already read fine with
+the publishable key (616 and 8 rows), and `bid_geo_prices` / `bid_geo_pods` already carry anon
+SELECT policies. The "RLS blocks anon reads" premise was stale. No DDL was needed for it.
+
+**What actually drives error, measured.** Coverage is >=95% on all 620 backtest jobs, so
+items-priced is not the constraint. Local price share is: MAE 7.8 at >=75% local vs 22.4 at
+<25%. That survives controlling for category (PAVE +7.1, GD +7.0, ALT +2.3), which is the check
+I skipped when I got the bidder-count claim wrong. Podded jobs run 0.87-0.92 local / 9.4-12.4
+MAE; the 449 unpodded jobs run 0.57 / 15.3.
+
+**Built SEKY and LAURELCLAY** from measured bidder overlap (Jaccard on bidder sets, 2022+):
+Clay-Laurel 52%, Harlan-Knox 50%, Clay-Jackson 48%, Bell-Knox 47%.
+
+| pod | counties | dist | cells |
+|---|---|---|---|
+| SEKY | Harlan, Bell, Knox, Whitley, Leslie | 11 | 214 |
+| LAURELCLAY | Laurel, Clay, Jackson, Rockcastle | 11 + 08 | 247 |
+
+Measured effect on the 217 affected backtest jobs — line-count local coverage, not
+dollar-weighted: SEKY 42.3% -> 82.2% (1,346 lines rescued from statewide), LAURELCLAY 35.7% ->
+78.3% (1,436 rescued). Both clear the 75% threshold. **The MAE number needs `bid_backtest_v8`** —
+I did not re-run the backtest, because reimplementing `predict()` to do it is exactly the
+test-drift hazard this file warns about. Grok's pipeline owns that.
+
+**I did NOT build INNERBG or LAKECUMB, deliberately.** Both looked viable on cells (161 / 194)
+and INNERBG had the worst headline MAE of the four candidates at 20.8. Split by category it
+collapses: INNERBG PAVE is already **7.7**, at the 7.1 ceiling, and the entire 20.8 is ten BRIDGE
+jobs at 80.0 — the lump-sum defect, which a pod cannot touch. LAKECUMB is PAVE 8.2 / ALT 7.3,
+also near ceiling. Building them would add cells and move nothing.
+
+**Correcting my own estimate:** I told Jacob ~3.5 MAE points from full pod coverage. Decomposed,
+most unpodded error is BRIDGE and GD, not locality. Realistic for these two is **~1 point**.
+
+**Reproducing the build method.** I regenerated the three existing pods before generating
+anything new. Same 105/161 codes and same `n` on every GARBOYLIN cell, but 19 values differed.
+Twelve were one bug: the original **deflates 2026 lettings back to 2025** (1/1.073 non-asphalt,
+1/1.156 asphalt residual, binder stripped at `kapi_year[2026]` = 640.35). The app's `escFactor`
+only escalates forward and returns 1 for 2026, so copying it was wrong for normalisation. After
+fixing that, **98 of 105 reproduce exactly**; the remaining 7 differ by one cent (one by four)
+because `data.json` stores the escalation factors rounded to 3 dp — `00464` back-solves to a raw
+bid of exactly $180.00, and $180 x 1.084243 = 195.1637 against their 195.17. The unrounded
+constants are not in the repo.
+
+**So I left BLUEGRASS / MADCLARK / GARBOYLIN byte-identical and only added the two new pods.**
+Verified explicitly, not assumed. Do not "fix" the 7 cents by regenerating the old pods — you
+will churn 616 cells to chase rounding noise you cannot reproduce.
+
+**Closed a real data leak.** Enumerating what the *publishable* key could read: nine views —
+`bid_item_price_history` (21,143 rows, **4,052 `allen_unit_price` values**, 620 contracts,
+through 2026-07-23), `bid_item_price_residuals` (1,153), and `bid_backtest` through `_v7` (620
+each, contract-level `ee` plus our `pred`). Root cause was subtler than RLS being off: all nine
+are **views owned by `postgres`**, and Postgres views default to security-*definer*, so they ran
+with the owner's rights and bypassed the RLS on `bid_items` underneath. That is why `bid_items`
+correctly refused the key while a view on top of it handed over Allen's unit prices. Enabling RLS
+would not have helped. Fixed by `REVOKE ALL ... FROM anon` on the nine (migration
+`revoke_anon_on_bid_pricing_and_backtest_views`); `authenticated` and `service_role` untouched.
+Verified from outside with the real key: all nine now 401, while `v_pod_prices` (616),
+`v_pod_membership` (8), `bid_geo_prices` (731) and `bid_geo_pods` (8) still read. Zero effect on
+estimation — `index.html` makes no Supabase calls at runtime, only pdf.js from CDN.
+
+**Still open, Jacob's call, NOT done:** the same definer-view pattern also exposes
+`v_po_line_status` (purchase orders, over locked `po_*` tables) and six QC lab views —
+`v_gradation_curve`, `v_volumetric_summary`, `v_amaw_sublot`, `v_mix_gsb_blend`,
+`v_material_by_sample_point`, `v_aggregate_moving_avg`. I did not touch them: the authorisation
+was for the bid tables, and something does use the anon key (tirewatch and HCT dispatch have
+deliberate anon policies), so revoking blind could break a live app.
+
+**Jackson is no longer standalone.** Jacob approved folding it into LAURELCLAY, reversing the
+"Jackson prices on its own" note. It rescues 84 item codes Jackson could not price alone (48
+cells solo vs 264 pooled). Its PAVE was already 7.9 at 0.797 local, so the gain is in its 4
+GD/BRIDGE jobs — real mechanism, sample too small to promise a number. `test_cascade_js.mjs`
+check 7 asserted "Jackson has no pod"; it now asserts Jackson resolves to LAURELCLAY, that Scott
+(D07) picks up no pod, that Jackson still falls through an empty pod to D11, and that it prices
+on LAURELCLAY once a cell exists.
+
+**Touched:** `pods.json`, `data.json`, `index.html` (DATA splice only, via `merge_pods.py`),
+`tests/test_cascade_js.mjs`, `HANDOFF.md`. Engine functions verified byte-identical to `main`:
+`predict`, `unitPrice`, `localPrice`, `podOf`, `districtOf`, `normCounty`, `confOf`,
+`priceFromRec`, `tierRecs`. All three suites exit 0; both script blocks pass `node --check`;
+inlined DATA matches `data.json`; 1,077 pod cells across 5 pods, 17 counties, no overlaps.
+
+**Don't redo:** Don't cite the `engineer_unit_price` backfill as an accuracy lever — it is four
+fixed-price adjustment codes. Don't build `v_pod_prices`; it exists. Don't build INNERBG or
+LAKECUMB for accuracy. Don't regenerate the three original pods. Don't copy the app's `escFactor`
+for normalising raw rows — it does not deflate 2026.
+
 ### 2026-08-27 — Claude (Opus 5) — Confidence accordion applied; fixed two bugs in Grok's script first
 
 **Did:** Jacob picked accordion layout #4. Grok flagged that the branch copy of

@@ -92,10 +92,19 @@ bad += !check("thin district falls through to statewide", at("LINCOLN"), null);
 DATA.geo.pod.GARBOYLIN[CODE].n = 2;
 bad += !check("Boyle falls to D07, not Lincoln's D08", at("BOYLE"), { scope: "district", p: 31 });
 
-// 7. Jackson is in no pod -- it must never pick one up
-bad += !check("Jackson has no pod", (new Function("DATA", `${src} return podOf;`)(DATA))("JACKSON"), "");
+// 7. Jackson joined LAURELCLAY on 2026-08-27 (Jacob's call, reversing the original
+// "Jackson prices on its own" note in pods.json). Pooling rescues 84 item codes it could
+// not price alone. Scott takes over as the county that must never pick up a pod.
+const podFn = new Function("DATA", `${src} return podOf;`)(DATA);
+bad += !check("Jackson is in LAURELCLAY", podFn("JACKSON"), "LAURELCLAY");
+bad += !check("Scott is in no pod", podFn("SCOTT"), "");
 DATA.geo.pod.GARBOYLIN[CODE].n = 5;
-bad += !check("Jackson still prices on its district", at("JACKSON"), { scope: "district", p: 33 });
+// LAURELCLAY has no table in this fixture, so Jackson must still reach its own district, 11.
+bad += !check("Jackson falls through an empty pod to D11", at("JACKSON"), { scope: "district", p: 33 });
+// ...and picks the pod up as soon as the table exists.
+DATA.geo.pod.LAURELCLAY = { [CODE]: { p: 21, n: 5, yr: 2025 } };
+bad += !check("Jackson prices on LAURELCLAY once it has a cell", at("JACKSON"), { scope: "pod", p: 21 });
+delete DATA.geo.pod.LAURELCLAY;
 
 // 8. no pod tables at all (today's shipped state) must behave exactly as before.
 // Undo check 5's thinning first, or this asserts against a district that cannot answer.
