@@ -84,6 +84,71 @@ Entry format:
 
 ## Log
 
+### 2026-08-27 — Claude (Opus 5) — Tier 1: guarded the district tables (15 cells dropped)
+
+**Did:** applied the pod build's sanity guard to the district price tables, which never had
+one. They come from a different source (`UBER_AUBP_Data 20250610`) than the pods, so penny bids
+and outliers survived in them. `guard_geo.py` drops a district cell below $0.05 or outside
+0.25x-4x the statewide average, then re-inlines DATA by brace-matching the way `merge_pods.py`
+does. **115 -> 100 cells.**
+
+**21 cells fail the guard; I dropped 15 and deliberately kept 6.** The six are `02650` MAINTAIN
+& CONTROL TRAFFIC (all four districts) and `02569` DEMOBILIZATION (D07, D08). They fail only
+because they are size-scaling lump sums measured against a statewide weighted average drawn
+from much bigger jobs — D11 `02650` at $9,500 against $71,414 statewide is a plausible
+district-sized number, not a defect. The engine never prices either off a table anyway
+(`predict()` `continue`s past mob/demob; ls_ratio codes price by ratio when the unit is LS), and
+in the one case where it could ever matter — a `02650` line whose unit is not LS — the district
+figure is the better of the two. Dropping them would have made that case worse. The script
+reports them as retained with the reason.
+
+**Effect on the three August fixtures**, measured by running the real `predict()` from both
+revisions, not estimated:
+
+| job | before | after | change |
+|---|---|---|---|
+| 262155 Clark | $1,202,530 | $1,210,788 | +$8,258 (+0.69%) |
+| 263024 Jackson | $345,150 | $349,720 | +$4,571 (+1.32%) |
+| 262234 Lincoln | $1,277,203 | $1,284,477 | +$7,274 (+0.57%) |
+
+Every dollar traces to a line that was never a real price: Clark `24970EC` tack non-tracking at
+**$3.76/TON**, Jackson `00356` tack at $10.73/TON and `02562` temporary signs at **$0.01/SQFT**,
+Lincoln `00356` at $10.73/TON. Asphalt emulsion does not cost $3.76 a ton.
+
+**Local share falls on all three (100% -> 95.8% / 77.8%, 88% -> 84%) and that is the point, not
+a regression.** Those items were nominally "local" while carrying a fake number; they now price
+off the statewide row honestly. Do not read the drop as lost coverage.
+
+**Deliberately NOT done — the reason this is Tier 1 and not the whole job.** The tack cells are
+not corrupt data. Tack is bid bimodally: most *lines* are throwaway near-zero, but the *tonnage*
+sits in lines bid at real money. `00356` median is $10.00, its quantity-weighted average
+$110.65, AUBP $127.52. The geo tables take unweighted medians while the statewide table is
+AUBP's quantity-weighted average, so **the cascade swaps between two different statistics** —
+23-30% of district cells and 16-27% of pod cells diverge more than 25% between them, the two
+pods shipped today included (SEKY 21.5%, LAURELCLAY 26.7%). Dropping a cell only routes around
+that; it does not fix it. Full scope, three defects and three tiers, is in the artifact
+"Geo Price Table Cleanup".
+
+**Do NOT rebuild the district tables from letting data before that statistic question is
+settled.** The rebuild is the big coverage win — 115 cells against ~1,190 available for
+D07/D08/D11, plus a year of fresher data — but building it on the median would bake the
+mismatch into ten times as many cells. D09 also has zero contracts in `bid_projects` and cannot
+be rebuilt at all.
+
+**Branching note:** this is stacked on `claude/pods-seky-laurelclay`, not cut from `main`.
+`data.json` and `index.html` hold their data on one line each, so any two branches touching them
+conflict by construction. Stack, don't parallelise.
+
+**Touched:** `guard_geo.py` (new), `data.json`, `index.html` (DATA splice only), `HANDOFF.md`.
+Verified: pods all five byte-identical, `prices` / `rules` / `escalation` / `ls_ratios` / `kapi`
+/ `kapi_year` unchanged, district changes are 15 removals with **zero value edits**, inlined
+DATA matches `data.json`, all three suites exit 0, re-run prints `already applied` and leaves
+both files md5-identical.
+
+**Don't redo:** Don't drop the six retained lump-sum cells — that is a considered call, not an
+oversight. Don't treat the tack cells as a data-entry error; they are correct medians of a
+bimodal population and the fix is the statistic, not the value.
+
 ### 2026-08-27 — Claude (Opus 5) — Two new pods (SEKY, LAURELCLAY); closed a public-key data leak; killed the `engineer_unit_price` myth
 
 **The `engineer_unit_price` backfill does not exist as a task. Stop citing it.** I had the number
