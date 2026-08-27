@@ -1,0 +1,6 @@
+# Python bytecode from running compile_data.py / merge_geo.py / apply_gate_and_geo.py
+__pycache__/
+*.py[cod]
+
+# Local scratch — the real source CSVs for compile_data.py are not in this repo
+*.local.json

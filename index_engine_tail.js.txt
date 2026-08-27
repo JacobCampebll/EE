@@ -1,0 +1,450 @@
+;
+
+/* ============================================================
+   ENGINE  (mirrors bid_backtest_v5 in Supabase)
+   ============================================================ */
+const fmt  = n => "$" + Math.round(n).toLocaleString();
+const fmt2 = n => n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+
+const KAPI_LAST = Object.keys(DATA.kapi).sort().pop();
+function kapiAt(key){
+  if (DATA.kapi[key]) return { v: DATA.kapi[key], est: false };
+  return { v: DATA.kapi[KAPI_LAST], est: true };   // carried forward past the published file
+}
+
+function escFactor(fromYear, toYear, chain){
+  let f = 1;
+  for (let y = fromYear + 1; y <= toYear; y++) if (chain[y]) f *= chain[y];
+  return f;
+}
+
+function normCounty(s){
+  return String(s || "").toUpperCase().replace(/[.'']/g,"").replace(/\bMC\s+/g,"MC").replace(/\s+/g," ").trim();
+}
+function districtOf(county){
+  const geo = DATA.geo || {};
+  return (geo.county_to_district || {})[normCounty(county)] || "";
+}
+function detectCounty(lines){
+  const map = (DATA.geo && DATA.geo.county_to_district) || {};
+  const counts = {};
+  for (const raw of lines){
+    const ln = String(raw || "").replace(/\u00a0/g," ").toUpperCase();
+    const m = ln.match(/\b([A-Z][A-Z .'-]+?)\s+COUNT(?:Y|IES)\b/);
+    if (!m) continue;
+    const first = normCounty(m[1].split(/[-/,]/)[0]);
+    if (map[first]) counts[first] = (counts[first] || 0) + 1;
+  }
+  const best = Object.entries(counts).sort((a,b) => b[1]-a[1])[0];
+  return best ? best[0] : "";
+}
+function localPrice(code, county){
+  const geo = DATA.geo || {};
+  const minN = (DATA.rules && DATA.rules.geo_min_n) || 3;
+  const cName = normCounty(county);
+  const ctab = cName && geo.county && geo.county[cName];
+  if (ctab && ctab[code] && ctab[code].n >= minN) return { rec: ctab[code], scope: "county", label: cName };
+  const dist = districtOf(cName);
+  const dtab = dist && geo.district && geo.district[dist];
+  if (dtab && dtab[code] && dtab[code].n >= minN) return { rec: dtab[code], scope: "district", label: "D"+dist };
+  return null;
+}
+function unitPrice(code, qty, letKey, qtyForCurve, county){
+  const e = DATA.prices[code];
+  if (!e) return null;
+  const loc = localPrice(code, county);
+  const src = loc ? loc.rec : e;
+  const letYear = parseInt(letKey.slice(0,4), 10);
+  const kapiLet = kapiAt(letKey).v;
+  const fileYr = loc ? src.yr : e.yr;
+  const kapiFileYr = DATA.kapi_year[String(Math.min(fileYr, 2025))] || kapiLet;
+
+  let p;
+  if (e.ac){
+    // asphalt: strip binder at the file year's index, escalate the residual, re-add binder at letting KAPI
+    const resid = Math.max(0, src.p - e.ac * kapiFileYr);
+    p = resid * escFactor(fileYr, letYear, DATA.escalation.asphalt_resid) + e.ac * kapiLet;
+  } else {
+    p = src.p * escFactor(fileYr, letYear, DATA.escalation.other);
+  }
+  // quantity curve: big jobs price lower per unit, small jobs higher
+  const qc = (qtyForCurve != null ? qtyForCurve : qty);
+  if (e.b && e.q && qc > 0){
+    const m = Math.pow(qc / e.q, e.b);
+    p *= Math.min(DATA.rules.qty_max, Math.max(DATA.rules.qty_min, m));
+  }
+  const scope = loc ? loc.scope : (e.yr === 2025 ? "sa" : "old");
+  return { price: p, occ: src.n, year: src.yr, desc: e.d, asphalt: !!e.ac, scaled: !!(e.b && e.q),
+           scope, geo: loc ? loc.label : "state" };
+}
+
+function predict(items, letKey, cat, county){
+  const rows = [], unpriced = [];
+  let S = 0, adj = 0, hasMob = false, ratioPct = 0, matched = 0, work = 0;
+
+  // scale economies are per JOB: pool quantity by bid code across all lines/roads
+  const qtyByCode = {};
+  for (const it of items) qtyByCode[it.code] = (qtyByCode[it.code] || 0) + it.qty;
+  const lsCounted = {};   // each lump-sum ratio applies once per job, not per road
+
+  for (const it of items){
+    const { code, qty, desc, fixedAmt } = it;
+    if (CONFIG.fixedCodes.indexOf(code) !== -1){ adj += qty * (fixedAmt != null ? fixedAmt : 1); continue; }
+    if (code === CONFIG.mobCode){ hasMob = true; continue; }
+    if (code === CONFIG.demobCode) continue;
+
+    work++;
+    // lump-sum items with a known ratio scale with the job, not a flat average
+    const lr = DATA.ls_ratios[code];
+    if (it.unit === "LS" && lr && lr[cat] != null){
+      matched++;
+      if (!lsCounted[code]){ lsCounted[code] = true; ratioPct += lr[cat];
+        rows.push({ code, desc, qty, unit: null, ext: null, src: "ls", pct: lr[cat] }); }
+      continue;
+    }
+    const up = unitPrice(code, qty, letKey, qtyByCode[code], county);
+    if (!up){ unpriced.push({ code, desc, qty }); rows.push({ code, desc, qty, unit: 0, ext: 0, src: "none" }); continue; }
+    matched++;
+    const ext = qty * up.price;
+    S += ext;
+    rows.push({ code, desc, qty, unit: up.price, ext, src: up.scope,
+                occ: up.occ, yr: up.year, scaled: up.scaled, geo: up.geo });
+  }
+
+  const Sfull = S * (1 + ratioPct);
+  for (const r of rows) if (r.src === "ls"){ r.ext = S * r.pct; r.unit = r.ext; }
+  const mob = hasMob ? Sfull * DATA.rules.mob_cap : 0;
+  const demob = Sfull * DATA.rules.demob_floor;
+  const total = Sfull + mob + demob + adj;
+
+  const acc = DATA.meta.accuracy[cat] || DATA.meta.accuracy.GD;
+  // Backtest bias is (basis − EE)/EE. PAVE −7.2% means the raw basis ran low.
+  // Calibration gate: if local (county+district) share of unit-priced lines is >= 50%,
+  // skip the statewide bias so we do not double-correct. No new bias constant.
+  let nCounty = 0, nDist = 0, nState = 0;
+  for (const r of rows){
+    if (r.src === "county") nCounty++;
+    else if (r.src === "district") nDist++;
+    else if (r.src === "sa" || r.src === "old") nState++;
+  }
+  const srcCounts = { county: nCounty, district: nDist, state: nState };
+  const unitN = nCounty + nDist + nState;
+  const localShare = unitN ? (nCounty + nDist) / unitN : 0;
+  const biasApplied = localShare < 0.5;
+  const calibrated = biasApplied ? total * (1 - (acc.bias || 0) / 100) : total;
+  let rareExt = 0, pricedExt = 0;
+  for (const r of rows){
+    if (r.ext) { pricedExt += r.ext; if (r.occ != null && r.occ < 5) rareExt += r.ext; }
+  }
+  const rareShare = pricedExt ? rareExt / pricedExt : 0;
+  return { rows, unpriced, S: Sfull, mob, demob, adj, total, calibrated, rareShare,
+           hasMob, matched, work, localShare, biasApplied, srcCounts,
+           itemCov: work ? matched / work : 0, acc, cat, letKey, ratioPct, county: normCounty(county), district: districtOf(county) };
+}
+
+function confOf(cov, cat, acc, rareShare){
+  if (cat === "BRIDGE") return ["c-low","LOW"];
+  if ((rareShare || 0) > 0.25) return ["c-low","LOW"];
+  if (cov >= CONFIG.confHigh && acc.mae <= 10) return ["c-high","HIGH"];
+  if (cov >= CONFIG.confMed  && acc.mae <= 20) return ["c-med","MODERATE"];
+  return ["c-low","LOW"];
+}
+
+function suggestCat(items){
+  let asph = 0, earth = 0, br = 0, alt = 0;
+  for (const it of items){
+    const d = (it.desc || "").toUpperCase();
+    const c = it.code || "";
+    if (/ALTERNATE|MICROSURFACING|THINLAY/.test(d)) alt++;
+    if (/ASPH|PAVE MILLING|DGA BASE|LEVELING & WEDGING/.test(d)) asph += it.qty || 0;
+    if (/EXCAVAT|EMBANKMENT|BORROW EXCAVATION/.test(d) || c === "02200" || c === "02230") earth += it.qty || 0;
+    if (/^08/.test(c) || /BRIDGE|STRUCTURAL STEEL|REMOVE EXISTING DECK|GIRDER|ELASTOMERIC/.test(d)) br++;
+  }
+  if (alt >= 3) return { cat: "ALT", why: "item text looks like micro/thinlay alternates" };
+  if (br >= 6 && asph < 200) return { cat: "BRIDGE", why: "many structure / bridge bid codes" };
+  if (earth > 3000 && earth >= asph) return { cat: "GD", why: "earthwork quantities dominate" };
+  return { cat: "PAVE", why: "asphalt / resurfacing items dominate" };
+}
+
+function render(r){
+  const [cls, lbl] = confOf(r.itemCov, r.cat, r.acc, r.rareShare);
+  // band from this work type's own backtest spread, shifted by its measured bias
+  const b = r.acc.mae / 100, bias = r.biasApplied ? r.acc.bias / 100 : 0;
+  const lo = r.total * (1 - b - bias), hi = r.total * (1 + b - bias);
+  const locPct = ((r.localShare || 0) * 100).toFixed(0);
+  const sc = r.srcCounts || {county:0,district:0,state:0};
+  const top = r.rows.filter(x => x.ext != null).sort((a,c) => c.ext - a.ext).slice(0, 16);
+  const calSign = r.acc.bias < 0 ? "+" : "\u2212";
+  const calPct = Math.abs(r.acc.bias).toFixed(1);
+  const w5 = r.acc.w5 != null ? Math.round(100 * r.acc.w5 / r.acc.n) : null;
+  const w10 = Math.round(100 * r.acc.w10 / r.acc.n);
+
+  const wedge = !r.biasApplied ? `
+    <div class="note ok"><b>Headline is raw — local prices dominate.</b>
+    ${locPct}% of unit-priced lines came from county/district tables
+    (${sc.county} county, ${sc.district} district, ${sc.state} statewide),
+    so the statewide ${r.cat} bias is not applied. Raw and headline are the same.</div>`
+    : (Math.abs(r.acc.bias) > 2 ? `
+    <div class="note ok"><b>Headline is bias-calibrated.</b> Across ${r.acc.n} backtested
+    ${r.cat} jobs the raw statewide basis ran ${r.acc.bias < 0 ? "below" : "above"} the real
+    Engineer's Estimate by ${calPct}% on average. The big number is
+    raw \u00d7 (1 \u2212 bias) so it sits at the center of the range. Raw basis ${fmt(r.total)}.
+    Goal is \u00b15% (ideally \u00b12%) \u2014 this work type hit \u00b15% on ${w5}% of backtests, \u00b110% on ${w10}%.</div>` : "");
+
+  const unp = r.unpriced.length ? `
+    <div class="note bad"><b>${r.unpriced.length} item${r.unpriced.length>1?"s":""} could not be priced</b>
+    (${r.unpriced.slice(0,6).map(u=>u.code).join(", ")}${r.unpriced.length>6?", …":""}).
+    They contribute $0, so this is a <b>floor</b>. Price them by hand and add.</div>` : "";
+
+  const bridge = r.cat === "BRIDGE" ? `
+    <div class="note bad"><b>Bridges are the weakest category</b> — ${r.acc.mae.toFixed(0)}% mean error across
+    ${r.acc.n} backtested jobs. Most bridge dollars sit in lump-sum items whose statewide average mixes small
+    deck patches with full rehabs, and there's no quantity to scale by. Use this as a rough order of magnitude
+    only.</div>` : "";
+
+  document.getElementById("result").innerHTML = `
+  <div class="hero">
+    <div class="panel">
+      <h2>Predicted Engineer's Estimate</h2>
+      <div class="bignum">${fmt(r.calibrated)}</div>
+      <div class="range">${r.biasApplied ? "Calibrated EE" : "Predicted EE (raw)"} &nbsp;·&nbsp; raw basis ${fmt(r.total)}
+        (${r.biasApplied ? calSign+calPct+"% backtest" : locPct+"% local prices"})${r.rareShare > 0.05 ? ` &nbsp;·&nbsp; ${(r.rareShare*100).toFixed(0)}% of $ from rare items (n<5)` : ""}</div>
+      <div class="range">Expected range <b>${fmt(lo)} — ${fmt(hi)}</b> &nbsp;·&nbsp;
+        <span class="conf ${cls}">${lbl} CONFIDENCE</span></div>
+      <div style="margin-top:14px">
+        <div class="kv"><span>Work items subtotal (S)</span><b>${fmt(r.S)}</b></div>
+        ${r.ratioPct ? `<div class="kv"><span>…including lump-sum items at ${(r.ratioPct*100).toFixed(2)}% of S</span><b></b></div>`:``}
+        ${r.hasMob ? `<div class="kv"><span>Mobilization (5% cap)</span><b>${fmt(r.mob)}</b></div>` : ``}
+        <div class="kv"><span>Demobilization (1.5% floor)</span><b>${fmt(r.demob)}</b></div>
+        <div class="kv"><span>Fuel + asphalt adjustment</span><b>${fmt(r.adj)}</b></div>
+      </div>
+      ${wedge}${unp}${bridge}
+    </div>
+    <div class="panel">
+      <h2>Confidence detail</h2>
+      <div class="kv"><span>Items priced</span><b>${r.matched} / ${r.work}</b></div>
+      <div class="meter"><div style="width:${(r.itemCov*100).toFixed(0)}%;background:var(--accent)"></div></div>
+      <div class="kv" style="margin-top:10px"><span>Track record — ${r.cat}</span><b>${r.acc.n} jobs</b></div>
+      <div class="kv"><span>Mean error (raw basis)</span><b>${r.acc.mae.toFixed(1)}%</b></div>
+      <div class="kv"><span>Median error</span><b>${r.acc.median.toFixed(1)}%</b></div>
+      <div class="kv"><span>Within ±5% / ±10%</span><b>${w5}% / ${w10}% of jobs</b></div>
+      <div class="kv"><span>Measured bias</span><b>${r.biasApplied ? "applied" : "skipped"} (${r.acc.bias > 0 ? "+" : ""}${r.acc.bias.toFixed(1)}%)</b></div>
+      <div class="kv"><span>Local price share</span><b>${locPct}% (${sc.county} co / ${sc.district} dist / ${sc.state} state)</b></div>
+      <div class="kv"><span>County / district</span><b>${r.county ? (r.county+" · D"+r.district) : "statewide (no county)"}</b></div>
+      <div class="kv"><span>Letting month</span><b>${r.letKey}</b></div>
+      <div class="kv"><span>Binder index (KAPI)</span><b>$${kapiAt(r.letKey).v.toFixed(2)}/ton${kapiAt(r.letKey).est ? " *" : ""}</b></div>
+      ${kapiAt(r.letKey).est ? `<div class="note"><b>* Binder index carried forward.</b> KYTC has published
+        KAPI through ${KAPI_LAST}; this letting is later, so the last published value is used. Re-download the
+        Fuel &amp; Asphalt spreadsheet and rebuild data.json when a newer month posts.</div>` : ``}
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Top items by predicted value</h2>
+    <table><thead><tr><th>Code</th><th class="hidesm">Description</th><th class="num">Qty</th>
+      <th class="num">Unit $</th><th class="num">Extended</th><th>Basis</th></tr></thead><tbody>
+      ${top.map(t => `<tr><td>${t.code}</td><td class="hidesm">${t.desc||""}</td>
+        <td class="num">${t.qty.toLocaleString()}</td>
+        <td class="num">${t.src==="ls" ? "—" : fmt2(t.unit)}</td>
+        <td class="num">${fmt(t.ext)}</td>
+        <td><span class="src ${t.src}">${
+          t.src === "ls"   ? (t.pct*100).toFixed(2)+"% of S" :
+          t.src === "none" ? "no data" :
+          t.src === "county" ? t.geo+" "+t.yr+" · n="+t.occ+(t.scaled?" · qty-adj":"") :
+          t.src === "district" ? t.geo+" "+t.yr+" · n="+t.occ+(t.scaled?" · qty-adj":"") :
+          "state "+t.yr+" · n="+t.occ+(t.scaled?" · qty-adj":"")}</span></td></tr>`).join("")}
+    </tbody></table>
+  </div>`;
+  document.getElementById("result").classList.remove("hide");
+  document.getElementById("result").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+/* ============================================================
+   PDF PARSING
+   ============================================================ */
+let parsed = [];
+async function pdfToLines(file, onPage){
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const lines = [];
+  for (let pg = 1; pg <= pdf.numPages; pg++){
+    if (onPage) await onPage(pg, pdf.numPages);
+    const tc = await (await pdf.getPage(pg)).getTextContent();
+    const byY = new Map();
+    for (const it of tc.items){
+      if (!it.str || !it.str.trim()) continue;
+      const y = Math.round(it.transform[5] / 2) * 2;
+      if (!byY.has(y)) byY.set(y, []);
+      byY.get(y).push({ x: it.transform[4], s: it.str });
+    }
+    [...byY.entries()].sort((a,b) => b[0]-a[0]).forEach(([,arr]) => {
+      arr.sort((a,b) => a.x-b.x);
+      lines.push(arr.map(o => o.s).join(" ").replace(/\s+/g," ").trim());
+    });
+  }
+  return lines;
+}
+
+function parseBidItems(lines){
+  const U = CONFIG.units.join("|");
+  const full = new RegExp("^(\\d{4})\\s+([0-9A-Z]{5,12})\\s+(.*?)\\s+([\\d,]+\\.?\\d*)\\s+("+U+")\\b(.*)$");
+  const cont = new RegExp("^(.*?)\\s+([\\d,]+\\.?\\d*)\\s+("+U+")\\b(.*)$");
+  // desc is optional so wrapped LS rows ("0080 02650" / desc / "1.00 LS") still attach
+  const head = /^(\d{4})\s+([0-9A-Z]{5,12})\s*(.*)$/;
+  const out = []; let pending = null; let section = null;
+  // Full proposals also contain a Material Summary with *different* line numbers
+  // and per-road quantities. Pricing both double-counts asphalt. If a PBI table
+  // is present, parse only that.
+  const hasPBI = lines.some(l => /PROPOSAL BID ITEMS/i.test(l));
+  let inPBI = !hasPBI;
+
+  function push(line, code, desc, qty, unit, tail){
+    const q = parseFloat(String(qty).replace(/,/g,""));
+    if (!isFinite(q)) return;
+    desc = desc.replace(/\s+/g," ").replace(/\$+$/,"").trim();
+    if (!desc) return;
+    if (/^\d+$/.test(code)) code = code.padStart(5,"0");
+    const fp = /\$\s?([\d,]+\.\d{2})/.exec(tail || "");
+    out.push({ line, code, desc, qty:q, unit, section,
+               fixedAmt: fp ? parseFloat(fp[1].replace(/,/g,"")) : null });
+  }
+  for (const raw of lines){
+    const ln = raw.replace(/\u00a0/g," ").trim();
+    if (!ln) continue;
+    if (/PROPOSAL BID ITEMS/i.test(ln)){ inPBI = true; pending = null; continue; }
+    if (/MATERIAL SUMMARY/i.test(ln)){ inPBI = false; pending = null; continue; }
+    if (!inPBI) continue;
+    if (/^(Report Date|Page \d|LINE BID CODE|Contract ID|ADDENDUM)/i.test(ln)) continue;
+    const sec = ln.match(/^Section:\s*(\S+)\s*-?\s*(.*)$/i);
+    if (sec){ section = (sec[1] + " " + (sec[2] || "")).trim(); pending = null; continue; }
+    let m = ln.match(full);
+    if (m){ pending = null; push(m[1],m[2],m[3],m[4],m[5],m[6]); continue; }
+    if (pending){
+      m = ln.match(cont);
+      if (m){ push(pending.line,pending.code,(pending.desc+" "+m[1]).trim(),m[2],m[3],m[4]); pending=null; continue; }
+      pending.desc += " " + ln; continue;
+    }
+    m = ln.match(head);
+    if (m && !/^\d{4}\s+\d{4}\b/.test(ln)) pending = { line:m[1], code:m[2], desc:m[3] || "" };
+  }
+  return out;
+}
+
+async function handleFiles(files){
+  const st = document.getElementById("status");
+  st.textContent = "Reading PDF…";
+  document.getElementById("reviewPanel").classList.add("hide");
+  document.getElementById("result").classList.add("hide");
+  try{
+    let all = []; let allLines = [];
+    for (const f of files){
+      const lines = await pdfToLines(f, async (pg, n) => {
+        if (pg % 3 === 1){ st.textContent = `Reading ${f.name} — page ${pg} of ${n}…`;
+          await new Promise(r => setTimeout(r, 0)); }   // let the phone repaint
+      });
+      allLines = allLines.concat(lines);
+      all = all.concat(parseBidItems(lines));
+    }
+    const byLine = new Map();
+    all.forEach(i => byLine.set(i.line, i));       // later addendum wins
+    parsed = [...byLine.values()].sort((a,b) => a.line.localeCompare(b.line));
+    if (!parsed.length){
+      st.innerHTML = `<span style="color:var(--bad)">No bid items found. Make sure this is the
+        <b>Proposal Bid Items</b> PDF, not the plan set.</span>`;
+      document.getElementById("reviewPanel").classList.add("hide"); return;
+    }
+    const priced = parsed.filter(i => DATA.prices[i.code] || DATA.ls_ratios[i.code]).length;
+    const guess = suggestCat(parsed);
+    document.getElementById("wtSelect").value = guess.cat;
+    const co = detectCounty(allLines);
+    if (co) document.getElementById("coSelect").value = co;
+    const altSecs = [...new Set(parsed.map(i => i.section).filter(s => s && /ALTERNATE/i.test(s)))];
+    const altNote = altSecs.length
+      ? ` <b style="color:var(--warn)">Looks like alternates (${altSecs.join("; ")}). Both sides are priced until you pick one — this will over-predict.</b>`
+      : "";
+    st.innerHTML = `Read <b>${parsed.length}</b> bid items from ${files.length} file${files.length>1?"s":""}.`;
+    document.getElementById("parseSummary").innerHTML =
+      `<b>${parsed.length}</b> items · <b>${priced}</b> priced · <b>${parsed.length-priced}</b> with no data.
+       Work type set to <b>${document.getElementById("wtSelect").selectedOptions[0].text}</b>
+       (${guess.why}). County <b>${document.getElementById("coSelect").value || "not detected"}</b>${
+         document.getElementById("coSelect").value
+           ? " · D"+districtOf(document.getElementById("coSelect").value)
+           : " — pick one to use district prices when we have them"
+       }. Change either dropdown if that's wrong.`
+       + altNote;
+    document.getElementById("itemsTable").innerHTML = `<table><thead><tr><th>Line</th><th>Code</th>
+      <th class="hidesm">Description</th><th class="num">Qty</th><th>Unit</th><th>Basis</th></tr></thead><tbody>
+      ${parsed.map(i => { const e = DATA.prices[i.code], l = DATA.ls_ratios[i.code];
+        return `<tr><td>${i.line}</td><td>${i.code}</td><td class="hidesm">${i.desc}</td>
+        <td class="num">${i.qty.toLocaleString()}</td><td>${i.unit}</td>
+        <td><span class="src ${l?"ls":(e?(function(){ const loc = localPrice(i.code, document.getElementById("coSelect").value);
+            return loc ? loc.scope : (e.yr===2025?"sa":"old"); })():"none")}">${
+          l ? "% of job" : (e ? (function(){ const loc = localPrice(i.code, document.getElementById("coSelect").value);
+            return loc ? loc.label+" "+loc.rec.yr+" · n="+loc.rec.n : "state "+e.yr+" · n="+e.n; })() : "no data")}</span></td></tr>`; }).join("")}
+      </tbody></table>`;
+    document.getElementById("reviewPanel").classList.remove("hide");
+  }catch(e){
+    st.innerHTML = `<span style="color:var(--bad)">Could not read that PDF: ${e.message}</span>`;
+  }
+}
+
+/* ============================================================
+   INIT
+   ============================================================ */
+function init(){
+  document.getElementById("appTitle").textContent = CONFIG.title;
+  document.getElementById("appSubtitle").textContent = CONFIG.subtitle;
+  document.title = CONFIG.title;
+  const a = DATA.meta.accuracy;
+  document.getElementById("dataBadge").textContent =
+    `${Object.keys(DATA.prices).length} item codes · built ${DATA.meta.built}`;
+  document.getElementById("foot").innerHTML =
+    `Data built ${DATA.meta.built} from KYTC statewide average unit bid prices (2022–2025) + KAPI binder index.<br>` +
+    `Backtested on ${DATA.meta.projects_backtested} KYTC projects. Raw-basis mean error: resurfacing ${a.PAVE.mae}%, ` +
+    `alternates ${a.ALT.mae}%, grade & drain ${a.GD.mae}%, bridges ${a.BRIDGE.mae}%. ` +
+    `Headline is bias-calibrated when statewide prices dominate; raw when local share ≥ 50%. ` +
+    `Goal ±5% (ideally ±2%). Not a substitute for a takeoff.`;
+
+  const cs = document.getElementById("coSelect");
+  const blank = document.createElement("option"); blank.value = ""; blank.textContent = "Unknown — use statewide";
+  cs.appendChild(blank);
+  const ctd = (DATA.geo && DATA.geo.county_to_district) || {};
+  Object.keys(ctd).sort().forEach(c => {
+    const o = document.createElement("option"); o.value = c;
+    o.textContent = c + "  (D" + ctd[c] + ")"; cs.appendChild(o);
+  });
+
+  const ls = document.getElementById("letSelect");
+  const published = Object.keys(DATA.kapi).sort();
+  const last = published[published.length - 1];
+  let [ly, lm] = last.split("-").map(Number);
+  const future = [];
+  for (let i = 0; i < 12; i++){
+    lm++; if (lm > 12){ lm = 1; ly++; }
+    future.push(ly + "-" + String(lm).padStart(2, "0"));
+  }
+  const opts = published.slice(-18).concat(future).reverse();
+  opts.forEach(k => { const o = document.createElement("option"); o.value = k;
+    const a = kapiAt(k);
+    o.textContent = k + "  (KAPI $" + a.v.toFixed(2) + (a.est ? " — carried fwd" : "") + ")";
+    ls.appendChild(o); });
+  ls.value = future[0];   // default to the next unpublished month
+
+  const drop = document.getElementById("drop"), file = document.getElementById("file");
+  // the <label for="file"> opens the picker natively — no JS click() needed
+  file.onchange = e => { const f = [...e.target.files]; if (f.length) handleFiles(f); };
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = () => drop.classList.remove("over");
+  drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over");
+    handleFiles([...e.dataTransfer.files].filter(f => f.type === "application/pdf")); };
+  document.getElementById("toggleItems").onclick = () =>
+    document.getElementById("itemsTable").classList.toggle("hide");
+  document.getElementById("predictBtn").onclick = () =>
+    render(predict(parsed, document.getElementById("letSelect").value,
+                           document.getElementById("wtSelect").value,
+                           document.getElementById("coSelect").value));
+}
+if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+init();
+</script>
+</body>
+</html>
