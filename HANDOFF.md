@@ -84,6 +84,62 @@ Entry format:
 
 ## Log
 
+### 2026-09-01 — Claude (Opus 5) — Stage A2 built: the MLP lost, but the embeddings won inside LightGBM
+
+**A2 as specified (MiniLM -> 3-layer MLP) is worse than the A1 LightGBM baseline, on every
+category except ALT.** Same split, same weights, same Stage B — only Stage A differs.
+
+| | ALL | PAVE | GD | BRIDGE | ALT | line wMSE |
+|---|---|---|---|---|---|---|
+| A1 LightGBM | **11.82** | **7.99** | 16.91 | **20.39** | 11.99 | 0.2412 |
+| A2 MLP (embedding replaces bid_code) | 19.52 | 16.22 | 19.19 | 43.31 | **10.60** | 0.3091 |
+| A2 MLP (embedding + bid_code) | 23.38 | 20.56 | 33.05 | 27.53 | 10.95 | 0.3639 |
+
+Adding `bid_code` back made it *worse*, so this is not my design choice of letting the
+embedding replace it. 15,499 rows against a 480-1,639 dim input is simply GBM territory.
+
+**The failure mode is the exact case A2 was meant to fix.** Worst contract `254805`, 199.9%
+over. Its dominant line is `25089EC HIGH VELOCITY SURFACE TEXTURING`, 142,771 SQYD at $4.23
+— **81% of the contract, zero occurrences in training**; the whole PAVEMENT SURFACE
+TREATMENT (FRICTION) work type debuts in the holdout. MiniLM puts that description next to
+other texturing/surfacing codes priced per TON at $20-130, not per SQYD at $4.23. Semantic
+similarity fetched a neighbour with the wrong unit and price scale.
+
+**But the embeddings are good — the MLP was the problem.** Feeding the same 384 vectors into
+LightGBM as plain features (`EE_A1_WITH_EMB=1`) gives the **best line-level fit of anything
+tried: wMSE 0.2052** vs 0.2412 plain and 0.3091 for the MLP. Running the MLP variant first
+confounded 'are embeddings useful' with 'is an MLP right at this scale'; splitting those was
+the experiment that mattered.
+
+**At contract level embeddings split by work type, monotone in spend concentration:**
+
+| cat | top-5 codes' share of holdout $ | distinct codes | embedding effect on mean APE |
+|---|---|---|---|
+| PAVE | 60.5% | 251 | -4.70 (7.99 -> 12.69) |
+| ALT | 59.4% | 74 | -1.27 |
+| BRIDGE | 33.2% | 290 | -0.34 |
+| GD | **24.8%** | 615 | **+5.71** (16.91 -> 11.20) |
+
+Where a few codes carry the money, exact identity is available and correct and semantic
+similarity is noise. Where spend is diffuse across 615 codes (GD), the embedding is the only
+thing that generalises. Note this is NOT tail size: ALT has the *most* dollars on rarely-seen
+codes (34.0%) and embeddings still hurt it, because 59.4% of its money is in five known codes.
+
+**Best-of-breed per work type: 10.21% blended** (PAVE 7.99 A1-plain, GD 11.20 A1+emb, BRIDGE
+20.39 A1-plain, ALT 8.65 v7-leak-free) against v7 leak-free 13.69 and A1 alone 11.82. It also
+beats v7's published-but-leaky 11.95. **Caveat: the blend is selected on the same holdout it
+is scored on, so 10.21% is optimistic — a clean read needs a second holdout period.**
+
+**Touched:** `ml/` only — added `train_embed.py`, `embed_descriptions.py`; flags added to
+`train_baseline.py` (`EE_A1_WITH_EMB`); README rewritten. `ml/data/` still gitignored;
+`desc_emb.npy` is regenerable in ~30s and is not committed. Nothing written to Supabase, app
+untouched.
+
+**Don't redo:** Don't tune the MLP — two variants lost by 8-12 points, the architecture is
+wrong for 15k rows, and chasing it on a 148-contract holdout is how you overfit a benchmark.
+If embeddings go further they belong inside LightGBM, per work type. Don't apply embeddings
+to PAVE; they cost 4.7 points there.
+
 ### 2026-08-27 — Claude (Opus 5) — ML EE predictor Stage A1+B; v7's published accuracy is an in-sample fit
 
 **The finding that matters: `bid_backtest_v7`'s published numbers are not holdout

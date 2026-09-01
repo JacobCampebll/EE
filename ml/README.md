@@ -154,7 +154,10 @@ contracts will support.
 ```
 ml\sql\export_training.sql   psql script -> contracts.tsv, lines.tsv, prices.psv,
                              rules.psv, v7_pred.tsv
+ml\embed_descriptions.py     one-off: MiniLM -> desc_emb.npy (1,384 x 384)
 ml\train_baseline.py         Stage A1 + Stage B. Writes pred_baseline.csv.
+                             EE_A1_WITH_EMB=1 adds the embeddings as features.
+ml\train_embed.py            Stage A2, the MLP. EE_A2_WITH_CODE=1 keeps bid_code.
 ml\compare_v7.py             v7 published vs v7 leak-free vs A1+B, one holdout.
 ```
 
@@ -174,17 +177,94 @@ no reason to carry a 1.5 MB dump of bid history in the repo.
 
 ---
 
-## Stage A2 is not built yet, on purpose
+## Stage A2 — built, and the result is not what the brief expected
 
-The brief gates it: *"Build this FIRST and report before writing any neural net
-code."* A1 clears the bar it set — it beats leak-free v7 on the only category
-with a real sample — so A2 is justified on the evidence. It is not written.
+MiniLM `all-MiniLM-L6-v2` embeddings of `"<bid_code> <description>"`, 1,384
+distinct pairs, 384-dim, into a 3-layer MLP (256/128/64, BatchNorm, dropout
+0.15, AdamW, weighted MSE, early stopping). Stage B and the split are imported
+from `train_baseline.py`, so A1 and A2 differ *only* in Stage A.
 
-When it is, the case for it is unchanged and worth restating: 1,309 bid codes
-over 21,383 lines is a long tail, and one-hot `bid_code` learns nothing about a
-code seen twice. Description embeddings share strength across that tail. The
-tail is also where the money leaks — a rare code with a large quantity is exactly
-the Lincoln `00388` failure mode.
+**The MLP lost, badly.**
+
+| | ALL | PAVE | GD | BRIDGE | ALT | line-level wMSE |
+|---|---|---|---|---|---|---|
+| A1 LightGBM | **11.82** | **7.99** | 16.91 | **20.39** | 11.99 | 0.2412 |
+| A2 MLP, embedding replaces `bid_code` | 19.52 | 16.22 | 19.19 | 43.31 | **10.60** | 0.3091 |
+| A2 MLP, embedding **plus** `bid_code` | 23.38 | 20.56 | 33.05 | 27.53 | 10.95 | 0.3639 |
+
+Adding `bid_code` back made it worse, so the loss is not down to the design
+choice of letting the embedding replace it. At 15,499 training rows against a
+480–1,639 dimensional input, gradient boosting simply beats an MLP on tabular
+data, which is the ordinary result and should have been the prior.
+
+### The failure mode is worth reading, because it is the exact case A2 targeted
+
+The worst holdout contract, `254805`, is 199.9% over. Its dominant line is
+`25089EC HIGH VELOCITY SURFACE TEXTURING`, 142,771 SQYD at $4.23 — **81% of the
+contract, and the code appears zero times in training.** The whole
+`PAVEMENT SURFACE TREATMENT (FRICTION)` work type debuts in the holdout window.
+
+MiniLM places that description near other *texturing / surfacing* codes, which
+are priced per TON at $20–130 rather than per SQYD at $4.23. Semantic
+similarity pulled in a neighbour with the wrong unit and the wrong price scale.
+The long tail is where the embedding was supposed to help and is precisely where
+it did the damage.
+
+### But the embeddings themselves are not the problem — the MLP was
+
+Feeding the same 384 vectors into LightGBM as plain features
+(`EE_A1_WITH_EMB=1`) gives the **best line-level fit of anything tried**:
+
+| | line-level weighted holdout MSE |
+|---|---|
+| A1 LightGBM, no embeddings | 0.2412 |
+| A2 MLP | 0.3091 |
+| **A1 LightGBM + embeddings** | **0.2052** |
+
+At contract level it splits sharply by work type, and the split is explained by
+how concentrated each category's spend is:
+
+| work type | top-5 codes' share of holdout $ | distinct codes | effect of embeddings on mean APE |
+|---|---|---|---|
+| PAVE | 60.5% | 251 | **−4.70** (7.99 → 12.69) |
+| ALT | 59.4% | 74 | −1.27 (11.99 → 13.26) |
+| BRIDGE | 33.2% | 290 | −0.34 (20.39 → 20.73) |
+| GD | **24.8%** | 615 | **+5.71** (16.91 → 11.20) |
+
+Monotone in concentration. Where a handful of codes carry the dollars, exact
+code identity is available and correct, and semantic similarity only adds noise.
+Where spend is diffuse across 615 codes — GD — the embedding is the only thing
+that generalises, and it takes 5.7 points off.
+
+Note this is *not* the same as tail size: ALT has the largest share of dollars
+on rarely-seen codes (34.0%) and embeddings still hurt it, because 59.4% of its
+money sits in five well-known codes.
+
+### Best-of-breed, per work type
+
+The brief's own rule — keep whichever wins per work type — applied to Stage A as
+well as to the choice between engines:
+
+| work type | n | winner | mean APE |
+|---|---|---|---|
+| PAVE | 84 | A1 plain | 7.99 |
+| GD | 34 | **A1 + embeddings** | 11.20 |
+| BRIDGE | 17 | A1 plain | 20.39 |
+| ALT | 13 | **v7 leak-free** | 8.65 |
+| | 148 | blended | **10.21** |
+
+**10.21%** against v7 leak-free at 13.69% and A1 alone at 11.82%. It also beats
+v7's *published, leaky* 11.95%.
+
+Caveats that matter: ALT is 13 contracts and BRIDGE is 17, so those two rows are
+directional. The blend is selected on the same holdout it is scored on, which
+makes 10.21% optimistic — a clean read needs a second holdout period.
+
+### What not to do next
+
+Do not tune the MLP. Two variants both lost by 8–12 points, the architecture is
+wrong for the sample size, and chasing it on 148 contracts is how you overfit a
+benchmark. If embeddings are pursued further, they belong inside LightGBM.
 
 Two things worth fixing before or alongside A2, both visible in the numbers above:
 

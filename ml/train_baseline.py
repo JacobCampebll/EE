@@ -232,9 +232,34 @@ def report(pred_con, label):
 
 # ---------------------------------------------------------------- main
 
+def attach_embeddings(df):
+    """EE_A1_WITH_EMB=1: add the MiniLM description vectors as plain LightGBM
+    features. This disambiguates 'are embeddings useful' from 'is an MLP the
+    right architecture at 15k rows' -- train_embed.py confounds the two."""
+    import numpy as _np
+    emb = _np.load(os.path.join(DATA_DIR, "desc_emb.npy"))
+    keys = pd.read_csv(os.path.join(DATA_DIR, "desc_keys.tsv"), sep="\t", header=None,
+                       names=["bid_code", "description"],
+                       dtype={"bid_code": str, "description": str}, quoting=3)
+    keys["description"] = keys["description"].fillna("")
+    keys["_row"] = _np.arange(len(keys))
+    m = df.merge(keys, on=["bid_code", "description"], how="left")
+    if m["_row"].isna().any():
+        raise SystemExit("missing embeddings -- run embed_descriptions.py")
+    E = emb[m["_row"].astype(int).values]
+    cols = [f"e{i}" for i in range(E.shape[1])]
+    for i, c in enumerate(cols):
+        df[c] = E[:, i]
+    return df, cols
+
+
 def main():
     con, ln, binder, fuel = load()
     df = build(con, ln, binder, fuel)
+    emb_cols = []
+    if os.environ.get("EE_A1_WITH_EMB") == "1":
+        df, emb_cols = attach_embeddings(df)
+        print(f"embeddings attached as {len(emb_cols)} LightGBM features")
 
     cutoff = con["letting_date"].quantile(1 - HOLDOUT_FRAC)
     tr_ci = set(con.loc[con["letting_date"] <= cutoff, "ci"])
@@ -255,7 +280,7 @@ def main():
     # ---- pass 1: everything except mobilisation / demobilisation
     p1_tr = tr[(tr["is_mob"] == 0) & (tr["is_demob"] == 0)]
     p1_te = te[(te["is_mob"] == 0) & (te["is_demob"] == 0)]
-    m1, feats1 = fit_stage_a(p1_tr, p1_te)
+    m1, feats1 = fit_stage_a(p1_tr, p1_te, extra_feat=emb_cols)
     print(f"pass 1  best_iter={m1.best_iteration}  "
           f"holdout l2={m1.best_score['holdout']['l2']:.4f}  rows={len(p1_tr)}")
 
@@ -274,7 +299,7 @@ def main():
     ls_tr = df_all[(df_all["ci"].isin(tr_ci)) & ((df_all["is_mob"] == 1) | (df_all["is_demob"] == 1))]
     ls_te = df_all[(df_all["ci"].isin(te_ci)) & ((df_all["is_mob"] == 1) | (df_all["is_demob"] == 1))]
     if len(ls_tr) >= 50:
-        m2, feats2 = fit_stage_a(ls_tr, ls_te, extra_feat=["log_subtotal"])
+        m2, feats2 = fit_stage_a(ls_tr, ls_te, extra_feat=["log_subtotal"] + emb_cols)
         print(f"pass 2  best_iter={m2.best_iteration}  rows={len(ls_tr)} (mob/demob)")
         mask = (df_all["is_mob"] == 1) | (df_all["is_demob"] == 1)
         df_all.loc[mask, "pred_price"] = np.exp(
