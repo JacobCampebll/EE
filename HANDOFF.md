@@ -84,6 +84,71 @@ Entry format:
 
 ## Log
 
+### 2026-08-27 — Claude (Opus 5) — ML EE predictor Stage A1+B; v7's published accuracy is an in-sample fit
+
+**The finding that matters: `bid_backtest_v7`'s published numbers are not holdout
+accuracy.** This is not opinion, it is in `pg_get_viewdef('bid_backtest_v7')`. The view
+joins `bid_geo_prices` (pod + district) with **no year filter at all**, joins
+`bid_state_avg_prices` on `s.year <= p.ly` (**same-year** aggregates), joins
+`bid_qty_curves` and `bid_ls_ratios` (both fitted over all 620), and **has no train/test
+split anywhere**. It scores all 620 contracts using tables built from those same 620. It
+measures how well v7 reproduces its own training data. Do not quote 8.9% as a forecast
+accuracy again — mine included, I have quoted it that way repeatedly in this file.
+
+**Built a leak-free comparison.** Temporal split at the 75th percentile of `letting_date`
+(2025-04-24): 472 train contracts, 148 holdout, grouped so no contract straddles. Then v7's
+pricing rules re-implemented exactly, but with statewide/pod/district tables rebuilt from
+TRAIN contracts only and restricted to strictly prior years.
+
+| work type | n | v7 published | v7 leak-free | A1+B |
+|---|---|---|---|---|
+| PAVE | 84 | 7.75 | **11.42** | **7.99** |
+| GD | 34 | 18.21 | 16.42 | 16.91 |
+| BRIDGE | 17 | 24.07 | 23.37 | 20.39 |
+| ALT | 13 | 6.85 | 8.65 | 11.99 |
+| ALL | 148 | 11.95 | 13.69 | 11.82 |
+
+**Removing the leak costs v7 3.67 points on PAVE** (7.75 -> 11.42). That gap is the size of
+the self-grading. The new model scores 7.99 on PAVE *without* leaking — level with v7's
+leaky number and 3.43 points ahead of v7 measured the same way.
+
+**Per work type: A1+B wins PAVE (+3.43) and BRIDGE (+2.98), v7 wins ALT (+3.34), GD is a
+tie (0.49).** Only PAVE has a real sample. ALT n=13 and BRIDGE n=17 are directional. v7 is
+NOT replaced — keep whichever wins per category, which is what the brief asked for.
+
+**Model.** Stage A1 is LightGBM on `log(low_bid_unit_price)`, 21,383 rows, **weighted by
+each line's dollar share of its contract** — that weighting is the single most important
+choice; line error only matters in proportion to how much it moves the total. Two-pass for
+mob/demob: price everything else, feed the subtotal in as a feature, then price the two
+lump sums, so v7's 5% cap and 1.5% floor are learned rather than hard-coded. Stage B is
+four median EE/low-bid ratios fit on train contracts only (PAVE 0.9706, ALT 1.0262, GD
+1.0693, BRIDGE 1.2590) — deliberately not a neural net; 620 contracts will not support one.
+
+**Determinism bit me and is now pinned.** First runs varied ~0.2 pp and the GD winner
+flipped between runs. `deterministic=True`, `force_row_wise=True`, `num_threads=1`, all
+four seeds fixed. Verified two consecutive identical runs. A benchmark that will not
+reproduce is not a benchmark — if you change these params, re-verify before quoting.
+
+**Top feature by a mile is `log_qty` (gain 14,076 vs 5,699 for the next).** That is the
+same signal as the geo-table work: the quantity effect is real, large, and v7's power-law
+curves barely move at realistic quantities (0.992 multiplier at 4,300 tons on `00388`).
+Raw data shows a steep premium below ~1,000 units then a flat tail — a power law fits both
+ends badly. This is the highest-value modelling fix available.
+
+**Stage A2 (MiniLM description embeddings -> MLP) is NOT built, deliberately.** The brief
+gates it on A1 being benchmarked first. A1 clears the bar, so A2 is justified, but it is
+Jacob's call to start it.
+
+**Touched:** `ml/` only (new): `README.md`, `train_baseline.py`, `compare_v7.py`,
+`sql/export_training.sql`, `.gitignore`. No change to `index.html`, `data.json`, the app,
+or any existing table. Nothing was written to Supabase.
+
+**Don't redo:** Don't quote v7's published per-category numbers as holdout accuracy. Don't
+feed `bid_state_avg_prices` / `bid_geo_prices` / `bid_qty_curves` / `bid_ls_ratios` to a
+model as features — they are built from all 620 contracts and leak the test set. Don't
+unpin the LightGBM determinism params. `ml/data/` is gitignored and regenerable from
+`export_training.sql`; don't commit the dump.
+
 ### 2026-08-27 — Claude (Opus 5) — Tier 1: guarded the district tables (15 cells dropped)
 
 **Did:** applied the pod build's sanity guard to the district price tables, which never had
