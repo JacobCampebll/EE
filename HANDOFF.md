@@ -84,6 +84,67 @@ Entry format:
 
 ## Log
 
+## 2026-09-01 23:37 UTC — Claude
+
+**Did:** Tested whether `bid_qty_curves` needs refitting. **It does not, and my earlier
+claim that it did was wrong.** Correcting the 2026-09-01 A1 entry above: I wrote that
+"v7's power-law curves barely move at realistic quantities (0.992 multiplier at 4,300 tons
+on `00388`)" and called a refit "the highest-value modelling fix available." Both were
+wrong readings. `00388`'s `q_ref` is 4,045, so 4,300 tons sits essentially *on* that code's
+reference quantity — a multiplier of 0.992 there is the curve behaving correctly, not a
+dead curve. I generalised from one code evaluated at its own neutral point.
+
+Measured across all 21,383 priced lines: the curves cover 4,115 lines and **33.5% of
+dollars**, the dollar-weighted mean multiplier is **0.873**, and only **5.3% of curved
+dollars** land within 2% of 1.0. They are moving real money.
+
+Scored on the same leak-free holdout `compare_v7.py` uses (148 contracts,
+`letting_date > 2025-04-24`, price tables rebuilt train-only and prior-year, so only the
+curve varies). ALL mean APE vs `engineer_estimate`:
+
+| variant | ALL | vs published |
+|---|---|---|
+| **published beta + published q_ref** | **13.69** | — |
+| refit beta + published q_ref | 13.96 | +0.26 |
+| published beta + calibrated q_ref | 14.20 | +0.51 |
+| published beta + tier q_ref | 14.42 | +0.73 |
+| refit beta + calibrated q_ref | 14.52 | +0.83 |
+| refit beta + tier q_ref | 14.87 | +1.18 |
+| **no curve at all** | **15.08** | **+1.39** |
+
+**Nothing beat the published curves on mean APE.** Deleting them costs 1.39 pp, so they
+earn their place. Refit betas *agree* with the published ones on the codes that carry the
+dollars (`02697` −0.703 vs −0.706, `06542` −0.173 vs −0.167, `05985` −0.396 vs −0.382),
+which is the real reason the refit can't win: there was nothing wrong with beta.
+
+Also tested extending coverage — published 43 untouched, new curves added only for codes
+that have none, at |t| thresholds 2/3/4/6 (up to 32 new codes, +8.8% of dollars). ALL mean
+APE 13.75–14.06, all worse than 13.69. Only BRIDGE improved consistently (23.37 → ~22.98).
+
+One structural thing the test did surface, and it is **not** a curve problem: `q_ref` is a
+single number, but v7's cascade prices off **medians** at pod/district and a
+**quantity-weighted average** statewide. Those two have different neutral quantities, so no
+single `q_ref` can be unbiased for both. Giving each tier its own reference made things
+*worse* here (+0.73), which says the published `q_ref` is already absorbing that mismatch
+empirically. It is a real inconsistency in the cascade, but it is the same
+weighted-average-vs-median question that gates Tier 2 — fix it there, not in the curves.
+
+`log_qty` still being A1's top feature by 2.5× is explained without the curves being broken:
+in LightGBM it also proxies job scale and work type, which the curve deliberately does not.
+
+**Touched:** `ml/qty_curves.py` (new), `HANDOFF.md`.
+**Next / open:** Unchanged and still Jacob's calls — (a) weighted-average vs trimmed-mean,
+which gates the Tier 2 district rebuild (115 → ~1,190 cells) and now also owns the `q_ref`
+tier mismatch above; (b) PR #6 review/merge; (c) the 7 remaining SECURITY DEFINER views
+(`v_po_line_status` + 6 QC lab views), reported and untouched. Also still true: the 10.21%
+best-of-breed figure is selected on the holdout it is scored on and needs a second period
+before anyone quotes it.
+**Don't redo:** Don't refit `bid_qty_curves` — measured, published wins, three ways.
+Don't add curves for uncovered codes; that was tested at four thresholds and lost too.
+Don't quote "0.992 at 4,300 tons" as evidence of anything.
+**Claimed:** `ml/qty_curves.py` only. Not touching `index.html`, `data.json`, `pods.json`,
+`compile_data.py`, or any Supabase table.
+
 ### 2026-09-01 — Claude (Opus 5) — Stage A2 built: the MLP lost, but the embeddings won inside LightGBM
 
 **A2 as specified (MiniLM -> 3-layer MLP) is worse than the A1 LightGBM baseline, on every
