@@ -84,6 +84,188 @@ Entry format:
 
 ## Log
 
+## 2026-09-01 23:37 UTC — Claude
+
+**Did:** Tested whether `bid_qty_curves` needs refitting. **It does not, and my earlier
+claim that it did was wrong.** Correcting the 2026-09-01 A1 entry above: I wrote that
+"v7's power-law curves barely move at realistic quantities (0.992 multiplier at 4,300 tons
+on `00388`)" and called a refit "the highest-value modelling fix available." Both were
+wrong readings. `00388`'s `q_ref` is 4,045, so 4,300 tons sits essentially *on* that code's
+reference quantity — a multiplier of 0.992 there is the curve behaving correctly, not a
+dead curve. I generalised from one code evaluated at its own neutral point.
+
+Measured across all 21,383 priced lines: the curves cover 4,115 lines and **33.5% of
+dollars**, the dollar-weighted mean multiplier is **0.873**, and only **5.3% of curved
+dollars** land within 2% of 1.0. They are moving real money.
+
+Scored on the same leak-free holdout `compare_v7.py` uses (148 contracts,
+`letting_date > 2025-04-24`, price tables rebuilt train-only and prior-year, so only the
+curve varies). ALL mean APE vs `engineer_estimate`:
+
+| variant | ALL | vs published |
+|---|---|---|
+| **published beta + published q_ref** | **13.69** | — |
+| refit beta + published q_ref | 13.96 | +0.26 |
+| published beta + calibrated q_ref | 14.20 | +0.51 |
+| published beta + tier q_ref | 14.42 | +0.73 |
+| refit beta + calibrated q_ref | 14.52 | +0.83 |
+| refit beta + tier q_ref | 14.87 | +1.18 |
+| **no curve at all** | **15.08** | **+1.39** |
+
+**Nothing beat the published curves on mean APE.** Deleting them costs 1.39 pp, so they
+earn their place. Refit betas *agree* with the published ones on the codes that carry the
+dollars (`02697` −0.703 vs −0.706, `06542` −0.173 vs −0.167, `05985` −0.396 vs −0.382),
+which is the real reason the refit can't win: there was nothing wrong with beta.
+
+Also tested extending coverage — published 43 untouched, new curves added only for codes
+that have none, at |t| thresholds 2/3/4/6 (up to 32 new codes, +8.8% of dollars). ALL mean
+APE 13.75–14.06, all worse than 13.69. Only BRIDGE improved consistently (23.37 → ~22.98).
+
+One structural thing the test did surface, and it is **not** a curve problem: `q_ref` is a
+single number, but v7's cascade prices off **medians** at pod/district and a
+**quantity-weighted average** statewide. Those two have different neutral quantities, so no
+single `q_ref` can be unbiased for both. Giving each tier its own reference made things
+*worse* here (+0.73), which says the published `q_ref` is already absorbing that mismatch
+empirically. It is a real inconsistency in the cascade, but it is the same
+weighted-average-vs-median question that gates Tier 2 — fix it there, not in the curves.
+
+`log_qty` still being A1's top feature by 2.5× is explained without the curves being broken:
+in LightGBM it also proxies job scale and work type, which the curve deliberately does not.
+
+**Touched:** `ml/qty_curves.py` (new), `HANDOFF.md`.
+**Next / open:** Unchanged and still Jacob's calls — (a) weighted-average vs trimmed-mean,
+which gates the Tier 2 district rebuild (115 → ~1,190 cells) and now also owns the `q_ref`
+tier mismatch above; (b) PR #6 review/merge; (c) the 7 remaining SECURITY DEFINER views
+(`v_po_line_status` + 6 QC lab views), reported and untouched. Also still true: the 10.21%
+best-of-breed figure is selected on the holdout it is scored on and needs a second period
+before anyone quotes it.
+**Don't redo:** Don't refit `bid_qty_curves` — measured, published wins, three ways.
+Don't add curves for uncovered codes; that was tested at four thresholds and lost too.
+Don't quote "0.992 at 4,300 tons" as evidence of anything.
+**Claimed:** `ml/qty_curves.py` only. Not touching `index.html`, `data.json`, `pods.json`,
+`compile_data.py`, or any Supabase table.
+
+### 2026-09-01 — Claude (Opus 5) — Stage A2 built: the MLP lost, but the embeddings won inside LightGBM
+
+**A2 as specified (MiniLM -> 3-layer MLP) is worse than the A1 LightGBM baseline, on every
+category except ALT.** Same split, same weights, same Stage B — only Stage A differs.
+
+| | ALL | PAVE | GD | BRIDGE | ALT | line wMSE |
+|---|---|---|---|---|---|---|
+| A1 LightGBM | **11.82** | **7.99** | 16.91 | **20.39** | 11.99 | 0.2412 |
+| A2 MLP (embedding replaces bid_code) | 19.52 | 16.22 | 19.19 | 43.31 | **10.60** | 0.3091 |
+| A2 MLP (embedding + bid_code) | 23.38 | 20.56 | 33.05 | 27.53 | 10.95 | 0.3639 |
+
+Adding `bid_code` back made it *worse*, so this is not my design choice of letting the
+embedding replace it. 15,499 rows against a 480-1,639 dim input is simply GBM territory.
+
+**The failure mode is the exact case A2 was meant to fix.** Worst contract `254805`, 199.9%
+over. Its dominant line is `25089EC HIGH VELOCITY SURFACE TEXTURING`, 142,771 SQYD at $4.23
+— **81% of the contract, zero occurrences in training**; the whole PAVEMENT SURFACE
+TREATMENT (FRICTION) work type debuts in the holdout. MiniLM puts that description next to
+other texturing/surfacing codes priced per TON at $20-130, not per SQYD at $4.23. Semantic
+similarity fetched a neighbour with the wrong unit and price scale.
+
+**But the embeddings are good — the MLP was the problem.** Feeding the same 384 vectors into
+LightGBM as plain features (`EE_A1_WITH_EMB=1`) gives the **best line-level fit of anything
+tried: wMSE 0.2052** vs 0.2412 plain and 0.3091 for the MLP. Running the MLP variant first
+confounded 'are embeddings useful' with 'is an MLP right at this scale'; splitting those was
+the experiment that mattered.
+
+**At contract level embeddings split by work type, monotone in spend concentration:**
+
+| cat | top-5 codes' share of holdout $ | distinct codes | embedding effect on mean APE |
+|---|---|---|---|
+| PAVE | 60.5% | 251 | -4.70 (7.99 -> 12.69) |
+| ALT | 59.4% | 74 | -1.27 |
+| BRIDGE | 33.2% | 290 | -0.34 |
+| GD | **24.8%** | 615 | **+5.71** (16.91 -> 11.20) |
+
+Where a few codes carry the money, exact identity is available and correct and semantic
+similarity is noise. Where spend is diffuse across 615 codes (GD), the embedding is the only
+thing that generalises. Note this is NOT tail size: ALT has the *most* dollars on rarely-seen
+codes (34.0%) and embeddings still hurt it, because 59.4% of its money is in five known codes.
+
+**Best-of-breed per work type: 10.21% blended** (PAVE 7.99 A1-plain, GD 11.20 A1+emb, BRIDGE
+20.39 A1-plain, ALT 8.65 v7-leak-free) against v7 leak-free 13.69 and A1 alone 11.82. It also
+beats v7's published-but-leaky 11.95. **Caveat: the blend is selected on the same holdout it
+is scored on, so 10.21% is optimistic — a clean read needs a second holdout period.**
+
+**Touched:** `ml/` only — added `train_embed.py`, `embed_descriptions.py`; flags added to
+`train_baseline.py` (`EE_A1_WITH_EMB`); README rewritten. `ml/data/` still gitignored;
+`desc_emb.npy` is regenerable in ~30s and is not committed. Nothing written to Supabase, app
+untouched.
+
+**Don't redo:** Don't tune the MLP — two variants lost by 8-12 points, the architecture is
+wrong for 15k rows, and chasing it on a 148-contract holdout is how you overfit a benchmark.
+If embeddings go further they belong inside LightGBM, per work type. Don't apply embeddings
+to PAVE; they cost 4.7 points there.
+
+### 2026-08-27 — Claude (Opus 5) — ML EE predictor Stage A1+B; v7's published accuracy is an in-sample fit
+
+**The finding that matters: `bid_backtest_v7`'s published numbers are not holdout
+accuracy.** This is not opinion, it is in `pg_get_viewdef('bid_backtest_v7')`. The view
+joins `bid_geo_prices` (pod + district) with **no year filter at all**, joins
+`bid_state_avg_prices` on `s.year <= p.ly` (**same-year** aggregates), joins
+`bid_qty_curves` and `bid_ls_ratios` (both fitted over all 620), and **has no train/test
+split anywhere**. It scores all 620 contracts using tables built from those same 620. It
+measures how well v7 reproduces its own training data. Do not quote 8.9% as a forecast
+accuracy again — mine included, I have quoted it that way repeatedly in this file.
+
+**Built a leak-free comparison.** Temporal split at the 75th percentile of `letting_date`
+(2025-04-24): 472 train contracts, 148 holdout, grouped so no contract straddles. Then v7's
+pricing rules re-implemented exactly, but with statewide/pod/district tables rebuilt from
+TRAIN contracts only and restricted to strictly prior years.
+
+| work type | n | v7 published | v7 leak-free | A1+B |
+|---|---|---|---|---|
+| PAVE | 84 | 7.75 | **11.42** | **7.99** |
+| GD | 34 | 18.21 | 16.42 | 16.91 |
+| BRIDGE | 17 | 24.07 | 23.37 | 20.39 |
+| ALT | 13 | 6.85 | 8.65 | 11.99 |
+| ALL | 148 | 11.95 | 13.69 | 11.82 |
+
+**Removing the leak costs v7 3.67 points on PAVE** (7.75 -> 11.42). That gap is the size of
+the self-grading. The new model scores 7.99 on PAVE *without* leaking — level with v7's
+leaky number and 3.43 points ahead of v7 measured the same way.
+
+**Per work type: A1+B wins PAVE (+3.43) and BRIDGE (+2.98), v7 wins ALT (+3.34), GD is a
+tie (0.49).** Only PAVE has a real sample. ALT n=13 and BRIDGE n=17 are directional. v7 is
+NOT replaced — keep whichever wins per category, which is what the brief asked for.
+
+**Model.** Stage A1 is LightGBM on `log(low_bid_unit_price)`, 21,383 rows, **weighted by
+each line's dollar share of its contract** — that weighting is the single most important
+choice; line error only matters in proportion to how much it moves the total. Two-pass for
+mob/demob: price everything else, feed the subtotal in as a feature, then price the two
+lump sums, so v7's 5% cap and 1.5% floor are learned rather than hard-coded. Stage B is
+four median EE/low-bid ratios fit on train contracts only (PAVE 0.9706, ALT 1.0262, GD
+1.0693, BRIDGE 1.2590) — deliberately not a neural net; 620 contracts will not support one.
+
+**Determinism bit me and is now pinned.** First runs varied ~0.2 pp and the GD winner
+flipped between runs. `deterministic=True`, `force_row_wise=True`, `num_threads=1`, all
+four seeds fixed. Verified two consecutive identical runs. A benchmark that will not
+reproduce is not a benchmark — if you change these params, re-verify before quoting.
+
+**Top feature by a mile is `log_qty` (gain 14,076 vs 5,699 for the next).** That is the
+same signal as the geo-table work: the quantity effect is real, large, and v7's power-law
+curves barely move at realistic quantities (0.992 multiplier at 4,300 tons on `00388`).
+Raw data shows a steep premium below ~1,000 units then a flat tail — a power law fits both
+ends badly. This is the highest-value modelling fix available.
+
+**Stage A2 (MiniLM description embeddings -> MLP) is NOT built, deliberately.** The brief
+gates it on A1 being benchmarked first. A1 clears the bar, so A2 is justified, but it is
+Jacob's call to start it.
+
+**Touched:** `ml/` only (new): `README.md`, `train_baseline.py`, `compare_v7.py`,
+`sql/export_training.sql`, `.gitignore`. No change to `index.html`, `data.json`, the app,
+or any existing table. Nothing was written to Supabase.
+
+**Don't redo:** Don't quote v7's published per-category numbers as holdout accuracy. Don't
+feed `bid_state_avg_prices` / `bid_geo_prices` / `bid_qty_curves` / `bid_ls_ratios` to a
+model as features — they are built from all 620 contracts and leak the test set. Don't
+unpin the LightGBM determinism params. `ml/data/` is gitignored and regenerable from
+`export_training.sql`; don't commit the dump.
+
 ### 2026-08-27 — Claude (Opus 5) — Tier 1: guarded the district tables (15 cells dropped)
 
 **Did:** applied the pod build's sanity guard to the district price tables, which never had
