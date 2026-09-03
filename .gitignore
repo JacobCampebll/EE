@@ -4,3 +4,7 @@ __pycache__/
 
 # Local scratch — the real source CSVs for compile_data.py are not in this repo
 *.local.json
+
+# Netlify CLI link state, written by `netlify deploy` / the Netlify MCP.
+# Machine-local: it only records which site this checkout is linked to.
+.netlify/
